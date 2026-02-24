@@ -22,7 +22,7 @@ public sealed class AutoZoomGenerator
         var baseFocusHeight = Math.Max(8.0d, viewportHeight * settings.FocusAreaRatio);
         var clampedScale = Math.Clamp(1.0d / settings.FocusAreaRatio, settings.MinScale, settings.MaxScale);
 
-        var unmergedSegments = new List<ZoomSegment>();
+        var segments = new List<ZoomSegment>();
 
         foreach (var pointerEvent in pointerEvents.OrderBy(static e => e.T))
         {
@@ -39,7 +39,7 @@ public sealed class AutoZoomGenerator
             var start = Math.Max(0.0d, pointerEvent.T - settings.PreRollSeconds);
             var end = pointerEvent.T + settings.HoldSeconds;
 
-            unmergedSegments.Add(new ZoomSegment(
+            segments.Add(new ZoomSegment(
                 Start: start,
                 End: end,
                 Center: center,
@@ -47,7 +47,10 @@ public sealed class AutoZoomGenerator
                 TriggerCount: 1));
         }
 
-        return MergeOverlaps(unmergedSegments);
+        return segments
+            .OrderBy(static segment => segment.Start)
+            .ThenBy(static segment => segment.End)
+            .ToArray();
     }
 
     private static bool IsPrimaryClick(PointerEvent pointerEvent)
@@ -65,54 +68,4 @@ public sealed class AutoZoomGenerator
         return string.Equals(pointerEvent.Btn, "left", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyList<ZoomSegment> MergeOverlaps(List<ZoomSegment> segments)
-    {
-        if (segments.Count == 0)
-        {
-            return Array.Empty<ZoomSegment>();
-        }
-
-        segments.Sort(static (a, b) => a.Start.CompareTo(b.Start));
-        var merged = new List<ZoomSegment>(segments.Count);
-
-        var current = segments[0];
-        for (var index = 1; index < segments.Count; index++)
-        {
-            var next = segments[index];
-
-            if (next.Start <= current.End)
-            {
-                current = new ZoomSegment(
-                    Start: current.Start,
-                    End: Math.Max(current.End, next.End),
-                    Center: BlendCenter(current, next),
-                    Scale: Math.Max(current.Scale, next.Scale),
-                    TriggerCount: current.TriggerCount + next.TriggerCount);
-
-                continue;
-            }
-
-            merged.Add(current);
-            current = next;
-        }
-
-        merged.Add(current);
-        return merged;
-    }
-
-    private static ScreenPoint BlendCenter(ZoomSegment left, ZoomSegment right)
-    {
-        var totalWeight = left.TriggerCount + right.TriggerCount;
-        if (totalWeight <= 0)
-        {
-            return right.Center;
-        }
-
-        var leftWeight = left.TriggerCount / (double)totalWeight;
-        var rightWeight = right.TriggerCount / (double)totalWeight;
-
-        return new ScreenPoint(
-            (left.Center.X * leftWeight) + (right.Center.X * rightWeight),
-            (left.Center.Y * leftWeight) + (right.Center.Y * rightWeight));
-    }
 }

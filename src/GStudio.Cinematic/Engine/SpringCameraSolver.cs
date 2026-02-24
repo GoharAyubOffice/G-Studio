@@ -25,7 +25,7 @@ public sealed class SpringCameraSolver
 
         var frames = new List<CameraTransform>(frameCount + 1);
         var sortedSegments = zoomSegments.OrderBy(static s => s.Start).ToArray();
-        var activeIndex = 0;
+        var activeLowerBound = 0;
 
         for (var frame = 0; frame <= frameCount; frame++)
         {
@@ -35,12 +35,12 @@ public sealed class SpringCameraSolver
                 time = safeDuration;
             }
 
-            while (activeIndex < sortedSegments.Length && sortedSegments[activeIndex].End < time)
+            while (activeLowerBound < sortedSegments.Length && sortedSegments[activeLowerBound].End < time)
             {
-                activeIndex++;
+                activeLowerBound++;
             }
 
-            var active = TryGetActive(sortedSegments, activeIndex, time);
+            var active = FindLatestActive(sortedSegments, activeLowerBound, time);
 
             var targetCenter = active?.Center ?? viewport.Center;
             var targetScale = active?.Scale ?? 1.0d;
@@ -59,15 +59,29 @@ public sealed class SpringCameraSolver
         return frames;
     }
 
-    private static ZoomSegment? TryGetActive(ZoomSegment[] segments, int index, double time)
+    private static ZoomSegment? FindLatestActive(ZoomSegment[] segments, int lowerBound, double time)
     {
-        if (index < 0 || index >= segments.Length)
+        if (segments.Length == 0 || lowerBound >= segments.Length)
         {
             return null;
         }
 
-        var candidate = segments[index];
-        return candidate.Start <= time && candidate.End >= time ? candidate : null;
+        ZoomSegment? selected = null;
+        for (var index = lowerBound; index < segments.Length; index++)
+        {
+            var segment = segments[index];
+            if (segment.Start > time)
+            {
+                break;
+            }
+
+            if (segment.End >= time)
+            {
+                selected = segment;
+            }
+        }
+
+        return selected;
     }
 
     private static void Integrate(ref SpringState state, double target, SpringSettings settings, double dt)

@@ -1,5 +1,7 @@
 ﻿using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using GStudio.Capture.Recorder;
 using GStudio.Common.Configuration;
 using GStudio.Common.Project;
@@ -11,6 +13,13 @@ namespace GStudio.App;
 
 public partial class MainWindow : Window
 {
+    private const int WmHotKey = 0x0312;
+    private const int StopHotKeyId = 0x5A10;
+    private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint ModNoRepeat = 0x4000;
+    private const uint VkR = 0x52;
+
     private readonly SessionSettings _sessionSettings;
     private readonly ProjectSessionStore _sessionStore;
     private readonly EventLogStore _eventLogStore;
@@ -21,6 +30,9 @@ public partial class MainWindow : Window
     private ProjectSession? _activeSession;
     private CaptureStats? _lastStats;
     private PreviewRenderPlan? _lastPreview;
+    private HwndSource? _windowSource;
+    private bool _isStopHotKeyRegistered;
+    private bool _isStoppingRecording;
 
     public MainWindow()
     {
@@ -58,7 +70,16 @@ public partial class MainWindow : Window
         _previewPlanner = new DeterministicPreviewPlanner();
         _exportPackageWriter = new ExportPackageWriter();
 
+        SourceInitialized += MainWindow_SourceInitialized;
+
         UpdateUiState();
+    }
+
+    private void MainWindow_SourceInitialized(object? sender, EventArgs e)
+    {
+        _windowSource = (HwndSource)PresentationSource.FromVisual(this)!;
+        _windowSource.AddHook(WindowMessageHook);
+        RegisterStopHotKey(_windowSource.Handle);
     }
 
     private async void StartRecording_Click(object sender, RoutedEventArgs e)
@@ -78,8 +99,17 @@ public partial class MainWindow : Window
             _activeSession = await _recordingCoordinator.StartAsync(_sessionSettings);
 
             SessionPathText.Text = _activeSession.Paths.RootDirectory;
-            CaptureStatsText.Text = "Recording in progress";
-            SetStatus("Recording desktop frames and interaction events.");
+            CaptureStatsText.Text = "Recording in progress (Ctrl+Shift+R to stop)";
+
+            if (_isStopHotKeyRegistered)
+            {
+                SetStatus("Recording started. Press Ctrl+Shift+R to stop; app window is hidden while recording.");
+                HideForRecording();
+            }
+            else
+            {
+                SetStatus("Recording started. Stop hotkey unavailable, app remains visible and may appear in capture.");
+            }
         }
         catch (Exception ex)
         {
@@ -93,15 +123,27 @@ public partial class MainWindow : Window
 
     private async void StopRecording_Click(object sender, RoutedEventArgs e)
     {
-        if (!_recordingCoordinator.IsRecording)
+        await StopRecordingCoreAsync(restoreWindowAfterStop: false);
+    }
+
+    private async Task StopRecordingCoreAsync(bool restoreWindowAfterStop)
+    {
+        if (!_recordingCoordinator.IsRecording || _isStoppingRecording)
         {
             return;
         }
+
+        _isStoppingRecording = true;
 
         try
         {
             SetStatus("Stopping capture session...");
             _lastStats = await _recordingCoordinator.StopAsync();
+
+            if (restoreWindowAfterStop)
+            {
+                RestoreAfterRecording();
+            }
 
             _activeSession = _recordingCoordinator.ActiveSession;
             CaptureStatsText.Text =
@@ -115,6 +157,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _isStoppingRecording = false;
             UpdateUiState();
         }
     }
@@ -221,9 +264,65 @@ public partial class MainWindow : Window
         ExportButton.IsEnabled = !isRecording && _activeSession is not null && _lastPreview is not null;
     }
 
+    private void HideForRecording()
+    {
+        WindowState = WindowState.Minimized;
+        Hide();
+    }
+
+    private void RestoreAfterRecording()
+    {
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message == WmHotKey && wParam.ToInt32() == StopHotKeyId)
+        {
+            handled = true;
+            _ = StopRecordingCoreAsync(restoreWindowAfterStop: true);
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void RegisterStopHotKey(IntPtr hwnd)
+    {
+        _isStopHotKeyRegistered = RegisterHotKey(hwnd, StopHotKeyId, ModControl | ModShift | ModNoRepeat, VkR);
+    }
+
+    private void UnregisterStopHotKey(IntPtr hwnd)
+    {
+        if (!_isStopHotKeyRegistered)
+        {
+            return;
+        }
+
+        UnregisterHotKey(hwnd, StopHotKeyId);
+        _isStopHotKeyRegistered = false;
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        if (_windowSource is not null)
+        {
+            UnregisterStopHotKey(_windowSource.Handle);
+            _windowSource.RemoveHook(WindowMessageHook);
+        }
+
         _recordingCoordinator.DisposeAsync().AsTask().GetAwaiter().GetResult();
         base.OnClosed(e);
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }

@@ -88,6 +88,7 @@ internal sealed class WgcFrameProvider : IDesktopFrameProvider
                 captureItem.Size);
 
             captureSession = framePool.CreateCaptureSession(captureItem);
+            captureSession.IsCursorCaptureEnabled = false;
             captureSession.StartCapture();
 
             provider = new WgcFrameProvider(

@@ -5,7 +5,6 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX.Direct3D11;
-using FormsScreen = System.Windows.Forms.Screen;
 
 namespace GStudio.Capture.Recorder.FrameProviders;
 
@@ -64,12 +63,13 @@ internal static class WgcInterop
             captureItem = MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPointer);
             Marshal.Release(itemPointer);
 
-            var primaryBounds = FormsScreen.PrimaryScreen?.Bounds
-                ?? new Rectangle(0, 0, Math.Max(1, captureItem.Size.Width), Math.Max(1, captureItem.Size.Height));
+            var monitorBounds = TryGetMonitorBounds(monitor, out var resolvedBounds)
+                ? resolvedBounds
+                : new Rectangle(0, 0, Math.Max(1, captureItem.Size.Width), Math.Max(1, captureItem.Size.Height));
 
             captureBounds = new Rectangle(
-                primaryBounds.Left,
-                primaryBounds.Top,
+                monitorBounds.Left,
+                monitorBounds.Top,
                 Math.Max(1, captureItem.Size.Width),
                 Math.Max(1, captureItem.Size.Height));
 
@@ -100,12 +100,64 @@ internal static class WgcInterop
     [DllImport("user32.dll")]
     private static extern nint MonitorFromPoint(NativePoint point, uint flags);
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(nint monitorHandle, ref NativeMonitorInfo monitorInfo);
+
+    private static bool TryGetMonitorBounds(nint monitorHandle, out Rectangle bounds)
+    {
+        var monitorInfo = new NativeMonitorInfo
+        {
+            Size = Marshal.SizeOf<NativeMonitorInfo>()
+        };
+
+        if (!GetMonitorInfo(monitorHandle, ref monitorInfo))
+        {
+            bounds = Rectangle.Empty;
+            return false;
+        }
+
+        bounds = new Rectangle(
+            monitorInfo.MonitorRect.Left,
+            monitorInfo.MonitorRect.Top,
+            Math.Max(1, monitorInfo.MonitorRect.Right - monitorInfo.MonitorRect.Left),
+            Math.Max(1, monitorInfo.MonitorRect.Bottom - monitorInfo.MonitorRect.Top));
+
+        return true;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativePoint
     {
         public int X { get; init; }
 
         public int Y { get; init; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+
+        public int Top;
+
+        public int Right;
+
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct NativeMonitorInfo
+    {
+        public int Size;
+
+        public NativeRect MonitorRect;
+
+        public NativeRect WorkRect;
+
+        public uint Flags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
     }
 }
 

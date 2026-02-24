@@ -8,7 +8,7 @@ namespace GStudio.Cinematic.Tests;
 public sealed class CinematicEngineTests
 {
     [Fact]
-    public void AutoZoomGenerator_MergesOverlappingClickSegments()
+    public void AutoZoomGenerator_EmitsIndependentSegmentsForRapidClicks()
     {
         var generator = new AutoZoomGenerator();
         var settings = SessionSettings.CreateDefault().Camera with
@@ -26,10 +26,13 @@ public sealed class CinematicEngineTests
 
         var segments = generator.Generate(events, 1920, 1080, settings);
 
-        Assert.Single(segments);
+        Assert.Equal(2, segments.Count);
         Assert.Equal(0.8d, segments[0].Start, 3);
-        Assert.Equal(1.85d, segments[0].End, 3);
-        Assert.Equal(2, segments[0].TriggerCount);
+        Assert.Equal(1.5d, segments[0].End, 3);
+        Assert.Equal(1.15d, segments[1].Start, 3);
+        Assert.Equal(1.85d, segments[1].End, 3);
+        Assert.Equal(1, segments[0].TriggerCount);
+        Assert.Equal(1, segments[1].TriggerCount);
     }
 
     [Fact]
@@ -56,6 +59,38 @@ public sealed class CinematicEngineTests
         Assert.True(frames.Count > 120);
         Assert.True(frames.Max(static frame => frame.Scale) > 1.5d);
         Assert.Contains(frames, static frame => frame.Center.X > 980.0d);
+    }
+
+    [Fact]
+    public void SpringCameraSolver_PrefersMostRecentOverlappingZoomSegment()
+    {
+        var solver = new SpringCameraSolver();
+        var segments = new[]
+        {
+            new ZoomSegment(
+                Start: 1.0d,
+                End: 2.0d,
+                Center: new ScreenPoint(600.0d, 480.0d),
+                Scale: 2.2d,
+                TriggerCount: 1),
+            new ZoomSegment(
+                Start: 1.25d,
+                End: 2.2d,
+                Center: new ScreenPoint(1450.0d, 720.0d),
+                Scale: 2.4d,
+                TriggerCount: 1)
+        };
+
+        var frames = solver.Solve(
+            durationSeconds: 3.0d,
+            fps: 60,
+            viewport: new RectD(0.0d, 0.0d, 1920.0d, 1080.0d),
+            zoomSegments: segments,
+            preset: MotionPreset.Quick);
+
+        var postOverlapFrames = frames.Where(frame => frame.Time >= 1.45d && frame.Time <= 2.05d).ToArray();
+        Assert.NotEmpty(postOverlapFrames);
+        Assert.True(postOverlapFrames.Average(static frame => frame.Center.X) > 980.0d);
     }
 
     [Fact]

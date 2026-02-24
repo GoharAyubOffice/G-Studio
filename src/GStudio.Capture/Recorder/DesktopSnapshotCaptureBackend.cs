@@ -13,6 +13,8 @@ namespace GStudio.Capture.Recorder;
 
 public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 {
+    private static readonly TimeSpan InputSamplingInterval = TimeSpan.FromMilliseconds(8);
+
     private const int VkLeftMouseButton = 0x01;
     private const int VkControl = 0x11;
     private const int VkShift = 0x10;
@@ -44,7 +46,6 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
         var fps = Math.Max(1, context.Settings.Video.Fps);
         var frameInterval = TimeSpan.FromSeconds(1.0d / fps);
-        var frameCount = 0;
 
         await using var audioCapture = new WasapiAudioCaptureCoordinator(context.Session.Paths, context.Settings.Audio);
         audioCapture.Start();
@@ -53,15 +54,6 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         {
             Directory.CreateDirectory(context.Session.Paths.CaptureFramesDirectory);
         }
-
-        string? previousFramePath = null;
-
-        var pointerPosition = FormsCursor.Position;
-        var lastPointerX = (pointerPosition.X - bounds.Left) * pointerScaleX;
-        var lastPointerY = (pointerPosition.Y - bounds.Top) * pointerScaleY;
-        var leftMouseDown = IsKeyDown(VkLeftMouseButton);
-
-        var shortcutState = ShortcutCandidates.ToDictionary(static c => c.VirtualKey, static _ => false);
 
         await context.EventLogWriter.WriteWindowAsync(
             new WindowEvent(
@@ -77,35 +69,117 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             cancellationToken).ConfigureAwait(false);
 
         var stopwatch = Stopwatch.StartNew();
+        var frameTask = RunFrameLoopAsync(
+            frameProvider,
+            outputWidth,
+            outputHeight,
+            context.Session.Paths.CaptureFramesDirectory,
+            context.Settings.Video.CaptureFrames,
+            frameInterval,
+            cancellationToken);
+
+        var inputTask = RunInputLoopAsync(
+            context,
+            bounds,
+            outputWidth,
+            outputHeight,
+            pointerScaleX,
+            pointerScaleY,
+            () => stopwatch.Elapsed.TotalSeconds,
+            cancellationToken);
+
+        var frameCount = 0;
+
+        try
+        {
+            await Task.WhenAll(frameTask, inputTask).ConfigureAwait(false);
+            frameCount = frameTask.Result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            frameCount = frameTask.IsCompletedSuccessfully ? frameTask.Result : 0;
+        }
+        finally
+        {
+            await audioCapture.StopAsync().ConfigureAwait(false);
+        }
+
+        return new CaptureRunResult(
+            FrameCount: frameCount,
+            DurationSeconds: stopwatch.Elapsed.TotalSeconds);
+    }
+
+    private static async Task<int> RunFrameLoopAsync(
+        IDesktopFrameProvider frameProvider,
+        int outputWidth,
+        int outputHeight,
+        string frameDirectory,
+        bool captureFrames,
+        TimeSpan frameInterval,
+        CancellationToken cancellationToken)
+    {
+        var frameCount = 0;
+        string? previousFramePath = null;
+
         using var timer = new PeriodicTimer(frameInterval);
 
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                var t = stopwatch.Elapsed.TotalSeconds;
-
-                if (context.Settings.Video.CaptureFrames)
+                if (captureFrames)
                 {
                     CaptureFrame(
                         frameProvider,
                         outputWidth,
                         outputHeight,
-                        context.Session.Paths.CaptureFramesDirectory,
+                        frameDirectory,
                         frameCount,
                         ref previousFramePath);
                 }
 
                 frameCount++;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
 
-                pointerPosition = FormsCursor.Position;
+        return frameCount;
+    }
+
+    private static async Task RunInputLoopAsync(
+        CaptureRunContext context,
+        Rectangle bounds,
+        int outputWidth,
+        int outputHeight,
+        double pointerScaleX,
+        double pointerScaleY,
+        Func<double> timestampProvider,
+        CancellationToken cancellationToken)
+    {
+        var pointerPosition = GetCursorScreenPoint();
+        var lastPointerX = (pointerPosition.X - bounds.Left) * pointerScaleX;
+        var lastPointerY = (pointerPosition.Y - bounds.Top) * pointerScaleY;
+        var leftMouseDown = IsKeyDown(VkLeftMouseButton);
+
+        var shortcutState = ShortcutCandidates.ToDictionary(static c => c.VirtualKey, static _ => false);
+        using var timer = new PeriodicTimer(InputSamplingInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var t = timestampProvider();
+
+                pointerPosition = GetCursorScreenPoint();
                 var relativeX = (pointerPosition.X - bounds.Left) * pointerScaleX;
                 var relativeY = (pointerPosition.Y - bounds.Top) * pointerScaleY;
 
                 relativeX = Math.Clamp(relativeX, 0.0d, outputWidth - 1.0d);
                 relativeY = Math.Clamp(relativeY, 0.0d, outputHeight - 1.0d);
 
-                if (Math.Abs(relativeX - lastPointerX) > 0.1d || Math.Abs(relativeY - lastPointerY) > 0.1d)
+                if (Math.Abs(relativeX - lastPointerX) > 0.5d || Math.Abs(relativeY - lastPointerY) > 0.5d)
                 {
                     await context.EventLogWriter.WritePointerAsync(
                         PointerEvent.Move(t, relativeX, relativeY),
@@ -132,14 +206,6 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        finally
-        {
-            await audioCapture.StopAsync().ConfigureAwait(false);
-        }
-
-        return new CaptureRunResult(
-            FrameCount: frameCount,
-            DurationSeconds: stopwatch.Elapsed.TotalSeconds);
     }
 
     private static async Task CaptureKeyboardAsync(
@@ -274,6 +340,27 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
     }
 
+    private static Point GetCursorScreenPoint()
+    {
+        if (GetCursorPos(out var point))
+        {
+            return new Point(point.X, point.Y);
+        }
+
+        return FormsCursor.Position;
+    }
+
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativePoint
+    {
+        public int X { get; init; }
+
+        public int Y { get; init; }
+    }
 }
