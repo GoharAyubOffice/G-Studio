@@ -5,14 +5,16 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 
 ## Chosen stack
 - Host app: WPF on .NET 9
-- Capture prototype: desktop snapshot capture (GDI) + Win32 input polling
+- Capture runtime: D3D11 desktop duplication backend with GDI fallback + Win32 input polling
 - Project storage: session folder with NDJSON event streams and JSON manifest
 - Cinematic engine: click-driven auto-zoom + spring camera + cursor smoothing (One Euro)
-- Export prototype: deterministic render plan + FFmpeg command script scaffold
+- Export runtime: deterministic render plan + one-click FFmpeg encode with optional mic/system audio mix
   
 ## Pipeline status update
+- Recorder now attempts GPU capture via DXGI duplication and falls back to GDI when unavailable.
 - Export now renders cinematic frames from camera transforms before encoding.
 - App export now performs one-click MP4 generation by invoking FFmpeg directly.
+- Export automatically mixes microphone/system WAV tracks into MP4 when both tracks exist.
 - Export package includes:
   - `render_plan.json`
   - `rendered_frames/frame_*.png` (camera-follow output)
@@ -45,6 +47,6 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 5. Add cursor sprite compositing and final audio mix in export path.
 
 ## Remaining focus
-1. Replace GDI capture with WGC + D3D11 for high-FPS reliability.
-2. Add timeline-based audio alignment/mix before encode.
+1. Replace duplication backend with Windows Graphics Capture interop path.
+2. Add audio timeline alignment/drift correction before final mux.
 3. Replace FFmpeg runtime dependency with native Media Foundation mux export.

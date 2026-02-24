@@ -4,10 +4,10 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using GStudio.Capture.Audio;
+using GStudio.Capture.Recorder.FrameProviders;
 using GStudio.Common.Configuration;
 using GStudio.Common.Events;
 using FormsCursor = System.Windows.Forms.Cursor;
-using FormsScreen = System.Windows.Forms.Screen;
 
 namespace GStudio.Capture.Recorder;
 
@@ -33,7 +33,9 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
     public async Task<CaptureRunResult> RunAsync(CaptureRunContext context, CancellationToken cancellationToken = default)
     {
-        var bounds = ResolveCaptureBounds(context.Settings.Video);
+        using var frameProvider = DesktopFrameProviderFactory.Create(context.Settings.Video, out var backendName);
+        var bounds = frameProvider.CaptureBounds;
+
         var outputWidth = ResolveOutputSize(context.Settings.Video.Width, bounds.Width);
         var outputHeight = ResolveOutputSize(context.Settings.Video.Height, bounds.Height);
 
@@ -52,6 +54,8 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             Directory.CreateDirectory(context.Session.Paths.CaptureFramesDirectory);
         }
 
+        string? previousFramePath = null;
+
         var pointerPosition = FormsCursor.Position;
         var lastPointerX = (pointerPosition.X - bounds.Left) * pointerScaleX;
         var lastPointerY = (pointerPosition.Y - bounds.Top) * pointerScaleY;
@@ -68,7 +72,7 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 Width: outputWidth,
                 Height: outputHeight,
                 Dpi: 96.0d,
-                Title: "PrimaryDisplay",
+                Title: backendName,
                 ColorSpace: "sRGB"),
             cancellationToken).ConfigureAwait(false);
 
@@ -84,11 +88,12 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 if (context.Settings.Video.CaptureFrames)
                 {
                     CaptureFrame(
-                        bounds,
+                        frameProvider,
                         outputWidth,
                         outputHeight,
                         context.Session.Paths.CaptureFramesDirectory,
-                        frameCount);
+                        frameCount,
+                        ref previousFramePath);
                 }
 
                 frameCount++;
@@ -170,43 +175,49 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         }
     }
 
-    private static Rectangle ResolveCaptureBounds(VideoCaptureSettings videoSettings)
-    {
-        if (videoSettings.Source == CaptureSourceKind.Region && videoSettings.Region is not null)
-        {
-            return new Rectangle(
-                videoSettings.Region.X,
-                videoSettings.Region.Y,
-                Math.Max(1, videoSettings.Region.Width),
-                Math.Max(1, videoSettings.Region.Height));
-        }
-
-        var primary = FormsScreen.PrimaryScreen;
-        if (primary is not null)
-        {
-            return primary.Bounds;
-        }
-
-        return new Rectangle(0, 0, videoSettings.Width, videoSettings.Height);
-    }
-
     private static void CaptureFrame(
-        Rectangle bounds,
+        IDesktopFrameProvider frameProvider,
         int outputWidth,
         int outputHeight,
         string frameDirectory,
-        int frameIndex)
+        int frameIndex,
+        ref string? previousFramePath)
     {
-        using var sourceBitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-        using (var sourceGraphics = Graphics.FromImage(sourceBitmap))
+        var framePath = Path.Combine(frameDirectory, $"frame_{frameIndex:D06}.png");
+
+        Bitmap? capturedBitmap = null;
+        var hasCapturedFrame = false;
+
+        try
         {
-            sourceGraphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+            hasCapturedFrame = frameProvider.TryCaptureFrame(out capturedBitmap);
+        }
+        catch
+        {
+            capturedBitmap?.Dispose();
+            capturedBitmap = null;
+            hasCapturedFrame = false;
         }
 
-        var framePath = Path.Combine(frameDirectory, $"frame_{frameIndex:D06}.png");
-        if (outputWidth == bounds.Width && outputHeight == bounds.Height)
+        if (!hasCapturedFrame || capturedBitmap is null)
+        {
+            if (!string.IsNullOrWhiteSpace(previousFramePath) && File.Exists(previousFramePath))
+            {
+                File.Copy(previousFramePath, framePath, overwrite: true);
+                previousFramePath = framePath;
+                return;
+            }
+
+            capturedBitmap = new Bitmap(frameProvider.CaptureBounds.Width, frameProvider.CaptureBounds.Height, PixelFormat.Format32bppArgb);
+            using var fallbackGraphics = Graphics.FromImage(capturedBitmap);
+            fallbackGraphics.Clear(Color.Black);
+        }
+
+        using var sourceBitmap = capturedBitmap;
+        if (outputWidth == sourceBitmap.Width && outputHeight == sourceBitmap.Height)
         {
             sourceBitmap.Save(framePath, ImageFormat.Png);
+            previousFramePath = framePath;
             return;
         }
 
@@ -220,10 +231,11 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         outputGraphics.DrawImage(
             sourceBitmap,
             new Rectangle(0, 0, outputWidth, outputHeight),
-            new Rectangle(0, 0, bounds.Width, bounds.Height),
+            new Rectangle(0, 0, sourceBitmap.Width, sourceBitmap.Height),
             GraphicsUnit.Pixel);
 
         outputBitmap.Save(framePath, ImageFormat.Png);
+        previousFramePath = framePath;
     }
 
     private static int ResolveOutputSize(int configuredSize, int fallbackSize)

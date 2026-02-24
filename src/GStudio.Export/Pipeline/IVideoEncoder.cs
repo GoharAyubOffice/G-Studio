@@ -1,10 +1,13 @@
 namespace GStudio.Export.Pipeline;
 
+public sealed record VideoEncodeRequest(
+    string FrameInputPattern,
+    string OutputMp4Path,
+    int Fps,
+    string? MicrophoneAudioPath = null,
+    string? SystemAudioPath = null);
+
 public interface IVideoEncoder
 {
-    Task EncodeAsync(
-        string frameInputPattern,
-        string outputMp4Path,
-        int fps,
-        CancellationToken cancellationToken = default);
+    Task EncodeAsync(VideoEncodeRequest request, CancellationToken cancellationToken = default);
 }

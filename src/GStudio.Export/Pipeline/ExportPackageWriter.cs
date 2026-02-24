@@ -47,22 +47,29 @@ public sealed class ExportPackageWriter
 
         var frameInputPattern = Path.Combine(renderedFrameSet.FramesDirectory, "frame_%06d.png");
         var fps = Math.Max(1, request.PreviewPlan.Fps);
+        var microphoneAudioPath = ResolveOptionalFilePath(request.Session.Paths.MicrophoneAudioPath);
+        var systemAudioPath = ResolveOptionalFilePath(request.Session.Paths.SystemAudioPath);
+
+        var encodeRequest = new VideoEncodeRequest(
+            FrameInputPattern: frameInputPattern,
+            OutputMp4Path: outputMp4Path,
+            Fps: fps,
+            MicrophoneAudioPath: microphoneAudioPath,
+            SystemAudioPath: systemAudioPath);
 
         await WriteEncodeScriptAsync(
             scriptPath: encodeScriptPath,
             frameInputDirectory: renderedFrameSet.FramesDirectory,
             outputMp4Path: outputMp4Path,
             fps: fps,
+            microphoneAudioPath: microphoneAudioPath,
+            systemAudioPath: systemAudioPath,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var videoEncoded = false;
         if (request.EncodeVideo)
         {
-            await _videoEncoder.EncodeAsync(
-                frameInputPattern,
-                outputMp4Path,
-                fps,
-                cancellationToken).ConfigureAwait(false);
+            await _videoEncoder.EncodeAsync(encodeRequest, cancellationToken).ConfigureAwait(false);
 
             videoEncoded = true;
         }
@@ -95,16 +102,19 @@ public sealed class ExportPackageWriter
         string frameInputDirectory,
         string outputMp4Path,
         int fps,
+        string? microphoneAudioPath,
+        string? systemAudioPath,
         CancellationToken cancellationToken)
     {
         var frameInputPattern = Path.Combine(frameInputDirectory, "frame_%06d.png");
+        var ffmpegCommand = BuildScriptCommand(frameInputPattern, outputMp4Path, fps, microphoneAudioPath, systemAudioPath);
 
         var script = new StringBuilder()
             .AppendLine("@echo off")
             .AppendLine("setlocal")
             .AppendLine($"set \"FRAME_PATTERN={frameInputPattern}\"")
             .AppendLine($"set \"OUTPUT_FILE={outputMp4Path}\"")
-            .AppendLine($"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"%OUTPUT_FILE%\"")
+            .AppendLine(ffmpegCommand)
             .AppendLine("if errorlevel 1 (")
             .AppendLine("  echo FFmpeg encode failed.")
             .AppendLine("  exit /b 1")
@@ -114,6 +124,40 @@ public sealed class ExportPackageWriter
             .ToString();
 
         await File.WriteAllTextAsync(scriptPath, script, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string BuildScriptCommand(
+        string frameInputPattern,
+        string outputMp4Path,
+        int fps,
+        string? microphoneAudioPath,
+        string? systemAudioPath)
+    {
+        var hasMic = !string.IsNullOrWhiteSpace(microphoneAudioPath) && File.Exists(microphoneAudioPath);
+        var hasSystem = !string.IsNullOrWhiteSpace(systemAudioPath) && File.Exists(systemAudioPath);
+
+        if (hasMic && hasSystem)
+        {
+            return
+                $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -i \"{microphoneAudioPath}\" -i \"{systemAudioPath}\" " +
+                "-filter_complex \"[1:a][2:a]amix=inputs=2:duration=longest[aout]\" -map 0:v:0 -map \"[aout]\" " +
+                "-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"%OUTPUT_FILE%\"";
+        }
+
+        if (hasMic || hasSystem)
+        {
+            var audioPath = hasMic ? microphoneAudioPath! : systemAudioPath!;
+            return
+                $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -i \"{audioPath}\" -map 0:v:0 -map 1:a:0 " +
+                "-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"%OUTPUT_FILE%\"";
+        }
+
+        return $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"%OUTPUT_FILE%\"";
+    }
+
+    private static string? ResolveOptionalFilePath(string candidatePath)
+    {
+        return File.Exists(candidatePath) ? candidatePath : null;
     }
 
     private static string SanitizeName(string candidate)

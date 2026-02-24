@@ -35,6 +35,8 @@ public sealed class ExportPipelineTests
 
             CreateTestFrame(session.Paths.CaptureFramesDirectory, 0, Color.DarkRed, Color.White);
             CreateTestFrame(session.Paths.CaptureFramesDirectory, 1, Color.DarkBlue, Color.White);
+            WriteFakeWave(session.Paths.MicrophoneAudioPath);
+            WriteFakeWave(session.Paths.SystemAudioPath);
 
             var plan = new PreviewRenderPlan(
                 Frames:
@@ -70,6 +72,8 @@ public sealed class ExportPipelineTests
             Assert.True(result.VideoEncoded);
             Assert.True(File.Exists(result.OutputMp4Path));
             Assert.Single(fakeEncoder.Calls);
+            Assert.NotNull(fakeEncoder.Calls[0].MicrophoneAudioPath);
+            Assert.NotNull(fakeEncoder.Calls[0].SystemAudioPath);
 
             var renderedFrames = Directory.GetFiles(result.RenderedFramesDirectory, "frame_*.png");
             Assert.Equal(2, renderedFrames.Length);
@@ -77,6 +81,7 @@ public sealed class ExportPipelineTests
             var script = await File.ReadAllTextAsync(result.EncodeScriptPath);
             Assert.Contains("rendered_frames", script, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ffmpeg -y -framerate 30", script, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("amix=inputs=2", script, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -98,15 +103,34 @@ public sealed class ExportPipelineTests
         bitmap.Save(path, ImageFormat.Png);
     }
 
+    private static void WriteFakeWave(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+        File.WriteAllBytes(path,
+        [
+            0x52, 0x49, 0x46, 0x46,
+            0x24, 0x00, 0x00, 0x00,
+            0x57, 0x41, 0x56, 0x45,
+            0x66, 0x6D, 0x74, 0x20,
+            0x10, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x01, 0x00,
+            0x44, 0xAC, 0x00, 0x00,
+            0x88, 0x58, 0x01, 0x00,
+            0x02, 0x00, 0x10, 0x00,
+            0x64, 0x61, 0x74, 0x61,
+            0x00, 0x00, 0x00, 0x00
+        ]);
+    }
+
     private sealed class FakeVideoEncoder : IVideoEncoder
     {
-        public List<(string FramePattern, string OutputPath, int Fps)> Calls { get; } = [];
+        public List<VideoEncodeRequest> Calls { get; } = [];
 
-        public Task EncodeAsync(string frameInputPattern, string outputMp4Path, int fps, CancellationToken cancellationToken = default)
+        public Task EncodeAsync(VideoEncodeRequest request, CancellationToken cancellationToken = default)
         {
-            Calls.Add((frameInputPattern, outputMp4Path, fps));
-            Directory.CreateDirectory(Path.GetDirectoryName(outputMp4Path) ?? ".");
-            return File.WriteAllBytesAsync(outputMp4Path, [0x00, 0x00, 0x00, 0x18], cancellationToken);
+            Calls.Add(request);
+            Directory.CreateDirectory(Path.GetDirectoryName(request.OutputMp4Path) ?? ".");
+            return File.WriteAllBytesAsync(request.OutputMp4Path, [0x00, 0x00, 0x00, 0x18], cancellationToken);
         }
     }
 }

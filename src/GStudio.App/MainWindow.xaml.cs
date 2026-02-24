@@ -38,8 +38,8 @@ public partial class MainWindow : Window
             },
             Audio = defaultSettings.Audio with
             {
-                CaptureMicrophone = false,
-                CaptureSystemAudio = false
+                CaptureMicrophone = true,
+                CaptureSystemAudio = true
             }
         };
 

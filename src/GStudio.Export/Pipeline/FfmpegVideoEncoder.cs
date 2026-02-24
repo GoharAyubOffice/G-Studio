@@ -6,17 +6,17 @@ namespace GStudio.Export.Pipeline;
 
 public sealed class FfmpegVideoEncoder : IVideoEncoder
 {
-    public async Task EncodeAsync(
-        string frameInputPattern,
-        string outputMp4Path,
-        int fps,
-        CancellationToken cancellationToken = default)
+    public async Task EncodeAsync(VideoEncodeRequest request, CancellationToken cancellationToken = default)
     {
-        var safeFps = Math.Max(1, fps);
-        Directory.CreateDirectory(Path.GetDirectoryName(outputMp4Path) ?? ".");
+        var safeFps = Math.Max(1, request.Fps);
+        Directory.CreateDirectory(Path.GetDirectoryName(request.OutputMp4Path) ?? ".");
 
-        var args =
-            $"-y -framerate {safeFps} -i \"{frameInputPattern}\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"{outputMp4Path}\"";
+        var args = BuildArguments(
+            request.FrameInputPattern,
+            request.OutputMp4Path,
+            safeFps,
+            request.MicrophoneAudioPath,
+            request.SystemAudioPath);
 
         var startInfo = new ProcessStartInfo
         {
@@ -41,7 +41,7 @@ public sealed class FfmpegVideoEncoder : IVideoEncoder
             var stdOut = await stdOutTask.ConfigureAwait(false);
             var stdErr = await stdErrTask.ConfigureAwait(false);
 
-            if (process.ExitCode != 0 || !File.Exists(outputMp4Path))
+            if (process.ExitCode != 0 || !File.Exists(request.OutputMp4Path))
             {
                 var details = BuildFailureDetails(process.ExitCode, stdOut, stdErr);
                 throw new InvalidOperationException($"FFmpeg encode failed. {details}");
@@ -53,6 +53,36 @@ public sealed class FfmpegVideoEncoder : IVideoEncoder
                 "FFmpeg is not available on PATH. Install FFmpeg or run the generated encode script manually.",
                 ex);
         }
+    }
+
+    private static string BuildArguments(
+        string frameInputPattern,
+        string outputMp4Path,
+        int fps,
+        string? microphoneAudioPath,
+        string? systemAudioPath)
+    {
+        var hasMic = !string.IsNullOrWhiteSpace(microphoneAudioPath) && File.Exists(microphoneAudioPath);
+        var hasSystem = !string.IsNullOrWhiteSpace(systemAudioPath) && File.Exists(systemAudioPath);
+
+        if (hasMic && hasSystem)
+        {
+            return
+                $"-y -framerate {fps} -i \"{frameInputPattern}\" -i \"{microphoneAudioPath}\" -i \"{systemAudioPath}\" " +
+                "-filter_complex \"[1:a][2:a]amix=inputs=2:duration=longest[aout]\" -map 0:v:0 -map \"[aout]\" " +
+                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
+        }
+
+        if (hasMic || hasSystem)
+        {
+            var audioPath = hasMic ? microphoneAudioPath! : systemAudioPath!;
+            return
+                $"-y -framerate {fps} -i \"{frameInputPattern}\" -i \"{audioPath}\" -map 0:v:0 -map 1:a:0 " +
+                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
+        }
+
+        return
+            $"-y -framerate {fps} -i \"{frameInputPattern}\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"{outputMp4Path}\"";
     }
 
     private static string BuildFailureDetails(int exitCode, string stdOut, string stdErr)

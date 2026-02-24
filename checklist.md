@@ -27,7 +27,10 @@
 - [x] Validate with build/tests and update checklist status
 
 ## Next priorities
-- [ ] Replace GDI frame capture with Windows Graphics Capture + D3D11 path
-- [x] Add WASAPI mic + loopback capture to WAV tracks (clock alignment refinement pending)
+- [x] Add D3D11 desktop duplication capture backend with GDI fallback
+- [ ] Upgrade capture backend from duplication API to Windows Graphics Capture interop path
+- [x] Add WASAPI mic + loopback capture to WAV tracks
+- [x] Mix captured audio tracks into MP4 export when available
+- [ ] Refine audio clock alignment/drift correction across capture and export
 - [ ] Implement native Media Foundation H.264 mux export path
 - [ ] Add cursor sprite compositing in rendered export frames
