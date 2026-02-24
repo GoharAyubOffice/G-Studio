@@ -31,6 +31,7 @@
 - [ ] Upgrade capture backend from duplication API to Windows Graphics Capture interop path
 - [x] Add WASAPI mic + loopback capture to WAV tracks
 - [x] Mix captured audio tracks into MP4 export when available
-- [ ] Refine audio clock alignment/drift correction across capture and export
+- [x] Add baseline audio resample sync correction in FFmpeg export path
+- [ ] Refine full audio clock alignment/drift correction across capture and export timeline
 - [ ] Implement native Media Foundation H.264 mux export path
-- [ ] Add cursor sprite compositing in rendered export frames
+- [x] Add cursor sprite compositing in rendered export frames

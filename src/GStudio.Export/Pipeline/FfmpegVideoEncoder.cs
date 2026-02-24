@@ -69,7 +69,7 @@ public sealed class FfmpegVideoEncoder : IVideoEncoder
         {
             return
                 $"-y -framerate {fps} -i \"{frameInputPattern}\" -i \"{microphoneAudioPath}\" -i \"{systemAudioPath}\" " +
-                "-filter_complex \"[1:a][2:a]amix=inputs=2:duration=longest[aout]\" -map 0:v:0 -map \"[aout]\" " +
+                "-filter_complex \"[1:a]aresample=async=1:first_pts=0[a1];[2:a]aresample=async=1:first_pts=0[a2];[a1][a2]amix=inputs=2:duration=longest[aout]\" -map 0:v:0 -map \"[aout]\" " +
                 $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
         }
 
@@ -78,7 +78,7 @@ public sealed class FfmpegVideoEncoder : IVideoEncoder
             var audioPath = hasMic ? microphoneAudioPath! : systemAudioPath!;
             return
                 $"-y -framerate {fps} -i \"{frameInputPattern}\" -i \"{audioPath}\" -map 0:v:0 -map 1:a:0 " +
-                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
+                $"-c:v libx264 -pix_fmt yuv420p -filter:a \"aresample=async=1:first_pts=0\" -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
         }
 
         return

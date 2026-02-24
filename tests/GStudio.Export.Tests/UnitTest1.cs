@@ -5,6 +5,7 @@ using GStudio.Common.Configuration;
 using GStudio.Common.Geometry;
 using GStudio.Export.Pipeline;
 using GStudio.Project.Store;
+using GStudio.Render.Composition;
 using GStudio.Render.Preview;
 
 namespace GStudio.Export.Tests;
@@ -82,6 +83,63 @@ public sealed class ExportPipelineTests
             Assert.Contains("rendered_frames", script, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ffmpeg -y -framerate 30", script, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("amix=inputs=2", script, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("aresample=async=1:first_pts=0", script, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CinematicFrameRenderer_DrawsCursorWhenVisible()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"));
+        var sourceDir = Path.Combine(root, "source");
+        var outputDir = Path.Combine(root, "output");
+        Directory.CreateDirectory(sourceDir);
+
+        try
+        {
+            using (var bitmap = new Bitmap(320, 180, PixelFormat.Format32bppArgb))
+            {
+                using var graphics = Graphics.FromImage(bitmap);
+                graphics.Clear(Color.Black);
+                bitmap.Save(Path.Combine(sourceDir, "frame_000000.png"), ImageFormat.Png);
+            }
+
+            var plan = new PreviewRenderPlan(
+                Frames:
+                [
+                    new PreviewFrame(
+                        FrameIndex: 0,
+                        Time: 0.0d,
+                        Camera: new CameraTransform(0.0d, new ScreenPoint(160.0d, 90.0d), 1.0d),
+                        Cursor: new CursorSample(0.0d, new ScreenPoint(160.0d, 90.0d), false))
+                ],
+                ZoomSegments: Array.Empty<ZoomSegment>(),
+                DurationSeconds: 0.033d,
+                Fps: 30);
+
+            var renderer = new CinematicFrameRenderer();
+            await renderer.RenderAsync(plan, sourceDir, outputDir, 320, 180, 0.0d);
+
+            using var rendered = new Bitmap(Path.Combine(outputDir, "frame_000000.png"));
+            var foundCursorColor = false;
+
+            for (var y = 84; y <= 96 && !foundCursorColor; y++)
+            {
+                for (var x = 154; x <= 166 && !foundCursorColor; x++)
+                {
+                    var pixel = rendered.GetPixel(x, y);
+                    if (pixel.G > 100 && pixel.B > 90 && pixel.R < 90)
+                    {
+                        foundCursorColor = true;
+                    }
+                }
+            }
+
+            Assert.True(foundCursorColor);
         }
         finally
         {

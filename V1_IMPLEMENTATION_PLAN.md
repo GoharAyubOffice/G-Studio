@@ -15,6 +15,8 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 - Export now renders cinematic frames from camera transforms before encoding.
 - App export now performs one-click MP4 generation by invoking FFmpeg directly.
 - Export automatically mixes microphone/system WAV tracks into MP4 when both tracks exist.
+- Export applies baseline audio resample sync (`aresample=async=1:first_pts=0`) during encode.
+- Rendered export frames now composite cursor sprite from cinematic cursor samples.
 - Export package includes:
   - `render_plan.json`
   - `rendered_frames/frame_*.png` (camera-follow output)
@@ -48,5 +50,5 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 
 ## Remaining focus
 1. Replace duplication backend with Windows Graphics Capture interop path.
-2. Add audio timeline alignment/drift correction before final mux.
+2. Add full timeline-based audio alignment/drift correction before final mux.
 3. Replace FFmpeg runtime dependency with native Media Foundation mux export.

@@ -69,7 +69,7 @@ public sealed class CinematicFrameRenderer
 
             renderedBitmap.Save(outputPath, ImageFormat.Png);
 
-            previousCenter = TransformCenter(plan.Frames[frameIndex].Camera.Center, outputWidth, outputHeight, safeDesignWidth, safeDesignHeight);
+            previousCenter = TransformPoint(plan.Frames[frameIndex].Camera.Center, outputWidth, outputHeight, safeDesignWidth, safeDesignHeight);
             previousRenderedFramePath = outputPath;
 
             if (frameIndex % 24 == 0)
@@ -96,7 +96,8 @@ public sealed class CinematicFrameRenderer
         ScreenPoint? previousCenter,
         string? previousRenderedFramePath)
     {
-        var mappedCenter = TransformCenter(frame.Camera.Center, outputWidth, outputHeight, designWidth, designHeight);
+        var mappedCenter = TransformPoint(frame.Camera.Center, outputWidth, outputHeight, designWidth, designHeight);
+        var mappedCursor = TransformPoint(frame.Cursor.Position, outputWidth, outputHeight, designWidth, designHeight);
         var cameraScale = Math.Max(1.0d, frame.Camera.Scale);
 
         var cropWidth = outputWidth / cameraScale;
@@ -153,11 +154,22 @@ public sealed class CinematicFrameRenderer
             }
         }
 
+        DrawCursorGlyph(
+            graphics,
+            mappedCursor,
+            frame.Cursor.Hidden,
+            cropX,
+            cropY,
+            cropWidth,
+            cropHeight,
+            outputWidth,
+            outputHeight);
+
         return targetBitmap;
     }
 
-    private static ScreenPoint TransformCenter(
-        ScreenPoint center,
+    private static ScreenPoint TransformPoint(
+        ScreenPoint point,
         int outputWidth,
         int outputHeight,
         int designWidth,
@@ -167,7 +179,75 @@ public sealed class CinematicFrameRenderer
         var scaleY = outputHeight / (double)designHeight;
 
         return new ScreenPoint(
-            center.X * scaleX,
-            center.Y * scaleY);
+            point.X * scaleX,
+            point.Y * scaleY);
+    }
+
+    private static void DrawCursorGlyph(
+        Graphics graphics,
+        ScreenPoint mappedCursor,
+        bool hidden,
+        double cropX,
+        double cropY,
+        double cropWidth,
+        double cropHeight,
+        int outputWidth,
+        int outputHeight)
+    {
+        if (hidden)
+        {
+            return;
+        }
+
+        var projectedX = (mappedCursor.X - cropX) * (outputWidth / cropWidth);
+        var projectedY = (mappedCursor.Y - cropY) * (outputHeight / cropHeight);
+
+        if (projectedX < -40.0d || projectedY < -40.0d || projectedX > outputWidth + 40.0d || projectedY > outputHeight + 40.0d)
+        {
+            return;
+        }
+
+        var scale = Math.Clamp(outputWidth / 1920.0d, 0.8d, 1.8d);
+        var points = new[]
+        {
+            new PointF(0f, 0f),
+            new PointF(0f, 24f),
+            new PointF(6f, 18f),
+            new PointF(11f, 30f),
+            new PointF(16f, 27f),
+            new PointF(11f, 15f),
+            new PointF(19f, 15f)
+        };
+
+        using var cursorPath = new GraphicsPath();
+        cursorPath.AddPolygon(points.Select(p =>
+            new PointF(
+                (float)(projectedX + (p.X * scale)),
+                (float)(projectedY + (p.Y * scale)))).ToArray());
+
+        using var shadowPath = new GraphicsPath();
+        shadowPath.AddPath(cursorPath, false);
+        using (var matrix = new Matrix())
+        {
+            matrix.Translate((float)(2.0d * scale), (float)(2.0d * scale));
+            shadowPath.Transform(matrix);
+        }
+
+        using var shadowBrush = new SolidBrush(Color.FromArgb(110, 0, 0, 0));
+        using var fillBrush = new SolidBrush(Color.WhiteSmoke);
+        using var borderPen = new Pen(Color.FromArgb(180, 0, 0, 0), (float)Math.Max(1.0d, 1.2d * scale));
+        using var hotspotBrush = new SolidBrush(Color.FromArgb(220, 10, 125, 115));
+
+        graphics.FillPath(shadowBrush, shadowPath);
+        graphics.FillPath(fillBrush, cursorPath);
+        graphics.DrawPath(borderPen, cursorPath);
+
+        var hotspotSize = (float)(4.0d * scale);
+        graphics.FillEllipse(
+            hotspotBrush,
+            (float)(projectedX - hotspotSize * 0.35f),
+            (float)(projectedY - hotspotSize * 0.35f),
+            hotspotSize,
+            hotspotSize);
     }
 }
