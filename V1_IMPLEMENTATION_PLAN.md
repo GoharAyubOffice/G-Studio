@@ -11,12 +11,13 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 - Export runtime: deterministic render plan + one-click FFmpeg encode with optional mic/system audio mix
   
 ## Pipeline status update
-- Recorder now attempts GPU capture via DXGI duplication and falls back to GDI when unavailable.
+- Recorder now attempts Windows Graphics Capture (WGC) first, then DXGI duplication, then GDI fallback.
 - Export now renders cinematic frames from camera transforms before encoding.
 - App export now performs one-click MP4 generation by invoking FFmpeg directly.
 - Export automatically mixes microphone/system WAV tracks into MP4 when both tracks exist.
-- Export applies baseline audio resample sync (`aresample=async=1:first_pts=0`) during encode.
+- Export applies audio drift correction with resample + tempo alignment and trim-to-video duration.
 - Rendered export frames now composite cursor sprite from cinematic cursor samples.
+- Native Media Foundation MP4 encoding path is implemented with automatic fallback to FFmpeg.
 - Export package includes:
   - `render_plan.json`
   - `rendered_frames/frame_*.png` (camera-follow output)
@@ -49,6 +50,6 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 5. Add cursor sprite compositing and final audio mix in export path.
 
 ## Remaining focus
-1. Replace duplication backend with Windows Graphics Capture interop path.
-2. Add full timeline-based audio alignment/drift correction before final mux.
-3. Replace FFmpeg runtime dependency with native Media Foundation mux export.
+1. Improve Media Foundation encoder throughput for long recordings (reduce frame-by-frame overhead).
+2. Add robust timeline-level drift metrics and diagnostics in project metadata.
+3. Add selective encoder mode control in UI (native only / ffmpeg only / adaptive).

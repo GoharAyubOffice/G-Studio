@@ -18,6 +18,12 @@ internal static class DesktopFrameProviderFactory
                 Math.Max(1, videoSettings.Region.Height)));
         }
 
+        if (WgcFrameProvider.TryCreate(out var wgcProvider, out _))
+        {
+            backendName = "wgc-primary";
+            return wgcProvider!;
+        }
+
         if (D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dProvider, out _))
         {
             backendName = "d3d11-duplication";

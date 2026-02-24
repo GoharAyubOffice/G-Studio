@@ -92,6 +92,29 @@ public sealed class ExportPipelineTests
     }
 
     [Fact]
+    public async Task AdaptiveVideoEncoder_FallsBackWhenNativeEncoderFails()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"), "out.mp4");
+        var fallback = new FakeVideoEncoder();
+        var adaptive = new AdaptiveVideoEncoder(
+            mediaFoundationEncoder: new ThrowingVideoEncoder(),
+            ffmpegEncoder: fallback);
+
+        await adaptive.EncodeAsync(new VideoEncodeRequest(
+            FrameInputPattern: "C:\\tmp\\frame_%06d.png",
+            OutputMp4Path: outputPath,
+            Fps: 30,
+            FrameCount: 30,
+            TargetDurationSeconds: 1.0d,
+            PreferMediaFoundation: true,
+            AllowFfmpegFallback: true));
+
+        Assert.Single(fallback.Calls);
+        Assert.True(File.Exists(outputPath));
+        Directory.Delete(Path.GetDirectoryName(outputPath)!, recursive: true);
+    }
+
+    [Fact]
     public async Task CinematicFrameRenderer_DrawsCursorWhenVisible()
     {
         var root = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"));
@@ -189,6 +212,14 @@ public sealed class ExportPipelineTests
             Calls.Add(request);
             Directory.CreateDirectory(Path.GetDirectoryName(request.OutputMp4Path) ?? ".");
             return File.WriteAllBytesAsync(request.OutputMp4Path, [0x00, 0x00, 0x00, 0x18], cancellationToken);
+        }
+    }
+
+    private sealed class ThrowingVideoEncoder : IVideoEncoder
+    {
+        public Task EncodeAsync(VideoEncodeRequest request, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("Simulated native encoder failure.");
         }
     }
 }

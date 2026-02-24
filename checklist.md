@@ -28,10 +28,10 @@
 
 ## Next priorities
 - [x] Add D3D11 desktop duplication capture backend with GDI fallback
-- [ ] Upgrade capture backend from duplication API to Windows Graphics Capture interop path
+- [x] Upgrade capture backend to Windows Graphics Capture interop path with duplication/GDI fallback
 - [x] Add WASAPI mic + loopback capture to WAV tracks
 - [x] Mix captured audio tracks into MP4 export when available
 - [x] Add baseline audio resample sync correction in FFmpeg export path
-- [ ] Refine full audio clock alignment/drift correction across capture and export timeline
-- [ ] Implement native Media Foundation H.264 mux export path
+- [x] Add drift correction using per-track tempo alignment and trim-to-video duration
+- [x] Implement native Media Foundation MP4 encode path with automatic FFmpeg fallback
 - [x] Add cursor sprite compositing in rendered export frames
