@@ -9,6 +9,13 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 - Project storage: session folder with NDJSON event streams and JSON manifest
 - Cinematic engine: click-driven auto-zoom + spring camera + cursor smoothing (One Euro)
 - Export prototype: deterministic render plan + FFmpeg command script scaffold
+  
+## Pipeline status update
+- Export now renders cinematic frames from camera transforms before encoding.
+- Export package includes:
+  - `render_plan.json`
+  - `rendered_frames/frame_*.png` (camera-follow output)
+  - `encode_with_ffmpeg.cmd` targeting rendered frames
 
 ## Implemented in this iteration
 1. Solution scaffold with modular projects (`App`, `Common`, `Project`, `Capture`, `Cinematic`, `Render`, `Export`).
@@ -24,7 +31,7 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
    - spring camera solver with motion presets
    - cursor smoothing + shake removal + idle hide sampling
 6. Deterministic preview plan generation at output FPS.
-7. Export package writer that emits `render_plan.json` and `encode_with_ffmpeg.cmd`.
+7. Export pipeline that renders camera-follow frames and emits `render_plan.json` + `encode_with_ffmpeg.cmd`.
 8. WPF control panel wiring end-to-end: record -> stop -> preview -> export package.
 9. Unit tests for cinematic engine behavior.
 
@@ -33,3 +40,4 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 2. Add WASAPI mic + loopback with shared clock and drift handling.
 3. Implement native Media Foundation H.264 export/mux path.
 4. Add proxy generation and GPU preview compositor.
+5. Add cursor sprite compositing and final audio mix in export path.

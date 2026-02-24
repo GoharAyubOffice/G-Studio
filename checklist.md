@@ -17,7 +17,8 @@
 
 ## Render/Export
 - [x] Implement deterministic preview plan generation at output FPS
-- [x] Implement export package writer (render plan + encode script scaffold)
+- [x] Implement cinematic frame renderer (camera transform + basic screen motion blur)
+- [x] Implement export package writer (render plan + rendered frames + encode script)
 
 ## App integration
 - [x] Build WPF control panel for recording and cinematic preview inspection
@@ -28,3 +29,4 @@
 - [ ] Replace GDI frame capture with Windows Graphics Capture + D3D11 path
 - [ ] Add WASAPI mic + loopback capture and audio sync clock
 - [ ] Implement native Media Foundation H.264 mux export path
+- [ ] Add cursor sprite compositing in rendered export frames

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using GStudio.Common.Configuration;
@@ -32,6 +33,12 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
     public async Task<CaptureRunResult> RunAsync(CaptureRunContext context, CancellationToken cancellationToken = default)
     {
         var bounds = ResolveCaptureBounds(context.Settings.Video);
+        var outputWidth = ResolveOutputSize(context.Settings.Video.Width, bounds.Width);
+        var outputHeight = ResolveOutputSize(context.Settings.Video.Height, bounds.Height);
+
+        var pointerScaleX = outputWidth / (double)Math.Max(1, bounds.Width);
+        var pointerScaleY = outputHeight / (double)Math.Max(1, bounds.Height);
+
         var fps = Math.Max(1, context.Settings.Video.Fps);
         var frameInterval = TimeSpan.FromSeconds(1.0d / fps);
         var frameCount = 0;
@@ -42,8 +49,8 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         }
 
         var pointerPosition = FormsCursor.Position;
-        var lastPointerX = pointerPosition.X - bounds.Left;
-        var lastPointerY = pointerPosition.Y - bounds.Top;
+        var lastPointerX = (pointerPosition.X - bounds.Left) * pointerScaleX;
+        var lastPointerY = (pointerPosition.Y - bounds.Top) * pointerScaleY;
         var leftMouseDown = IsKeyDown(VkLeftMouseButton);
 
         var shortcutState = ShortcutCandidates.ToDictionary(static c => c.VirtualKey, static _ => false);
@@ -54,8 +61,8 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 Type: "captureBounds",
                 X: bounds.Left,
                 Y: bounds.Top,
-                Width: bounds.Width,
-                Height: bounds.Height,
+                Width: outputWidth,
+                Height: outputHeight,
                 Dpi: 96.0d,
                 Title: "PrimaryDisplay",
                 ColorSpace: "sRGB"),
@@ -72,14 +79,22 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
                 if (context.Settings.Video.CaptureFrames)
                 {
-                    CaptureFrame(bounds, context.Session.Paths.CaptureFramesDirectory, frameCount);
+                    CaptureFrame(
+                        bounds,
+                        outputWidth,
+                        outputHeight,
+                        context.Session.Paths.CaptureFramesDirectory,
+                        frameCount);
                 }
 
                 frameCount++;
 
                 pointerPosition = FormsCursor.Position;
-                var relativeX = pointerPosition.X - bounds.Left;
-                var relativeY = pointerPosition.Y - bounds.Top;
+                var relativeX = (pointerPosition.X - bounds.Left) * pointerScaleX;
+                var relativeY = (pointerPosition.Y - bounds.Top) * pointerScaleY;
+
+                relativeX = Math.Clamp(relativeX, 0.0d, outputWidth - 1.0d);
+                relativeY = Math.Clamp(relativeY, 0.0d, outputHeight - 1.0d);
 
                 if (Math.Abs(relativeX - lastPointerX) > 0.1d || Math.Abs(relativeY - lastPointerY) > 0.1d)
                 {
@@ -167,14 +182,45 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         return new Rectangle(0, 0, videoSettings.Width, videoSettings.Height);
     }
 
-    private static void CaptureFrame(Rectangle bounds, string frameDirectory, int frameIndex)
+    private static void CaptureFrame(
+        Rectangle bounds,
+        int outputWidth,
+        int outputHeight,
+        string frameDirectory,
+        int frameIndex)
     {
-        using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+        using var sourceBitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+        using (var sourceGraphics = Graphics.FromImage(sourceBitmap))
+        {
+            sourceGraphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+        }
 
         var framePath = Path.Combine(frameDirectory, $"frame_{frameIndex:D06}.png");
-        bitmap.Save(framePath, ImageFormat.Png);
+        if (outputWidth == bounds.Width && outputHeight == bounds.Height)
+        {
+            sourceBitmap.Save(framePath, ImageFormat.Png);
+            return;
+        }
+
+        using var outputBitmap = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
+        using var outputGraphics = Graphics.FromImage(outputBitmap);
+        outputGraphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        outputGraphics.SmoothingMode = SmoothingMode.HighQuality;
+        outputGraphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        outputGraphics.CompositingQuality = CompositingQuality.HighQuality;
+
+        outputGraphics.DrawImage(
+            sourceBitmap,
+            new Rectangle(0, 0, outputWidth, outputHeight),
+            new Rectangle(0, 0, bounds.Width, bounds.Height),
+            GraphicsUnit.Pixel);
+
+        outputBitmap.Save(framePath, ImageFormat.Png);
+    }
+
+    private static int ResolveOutputSize(int configuredSize, int fallbackSize)
+    {
+        return configuredSize > 0 ? configuredSize : Math.Max(1, fallbackSize);
     }
 
     private static List<string> ActiveModifiers()

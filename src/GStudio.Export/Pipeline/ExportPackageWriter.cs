@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using GStudio.Render.Composition;
 using GStudio.Render.Preview;
 
 namespace GStudio.Export.Pipeline;
@@ -11,6 +12,13 @@ public sealed class ExportPackageWriter
         WriteIndented = true
     };
 
+    private readonly CinematicFrameRenderer _frameRenderer;
+
+    public ExportPackageWriter(CinematicFrameRenderer? frameRenderer = null)
+    {
+        _frameRenderer = frameRenderer ?? new CinematicFrameRenderer();
+    }
+
     public async Task<ExportPackageResult> WriteAsync(ExportRequest request, CancellationToken cancellationToken = default)
     {
         var safeName = SanitizeName(request.OutputName);
@@ -19,14 +27,34 @@ public sealed class ExportPackageWriter
 
         var planFilePath = Path.Combine(packageDirectory, "render_plan.json");
         var encodeScriptPath = Path.Combine(packageDirectory, "encode_with_ffmpeg.cmd");
+        var renderedFramesDirectory = Path.Combine(packageDirectory, "rendered_frames");
+        var outputMp4Path = Path.Combine(request.OutputDirectory, safeName + ".mp4");
 
         await WritePlanFileAsync(planFilePath, request.PreviewPlan, cancellationToken).ConfigureAwait(false);
-        await WriteEncodeScriptAsync(encodeScriptPath, request, cancellationToken).ConfigureAwait(false);
+
+        var renderedFrameSet = await _frameRenderer.RenderAsync(
+            plan: request.PreviewPlan,
+            sourceFramesDirectory: request.Session.Paths.CaptureFramesDirectory,
+            outputFramesDirectory: renderedFramesDirectory,
+            designWidth: request.Session.Manifest.Settings.Video.Width,
+            designHeight: request.Session.Manifest.Settings.Video.Height,
+            motionBlurStrength: request.Session.Manifest.Settings.MotionBlur.ScreenBlurStrength,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await WriteEncodeScriptAsync(
+            scriptPath: encodeScriptPath,
+            frameInputDirectory: renderedFrameSet.FramesDirectory,
+            outputMp4Path: outputMp4Path,
+            fps: Math.Max(1, request.PreviewPlan.Fps),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return new ExportPackageResult(
             PackageDirectory: packageDirectory,
             PlanFilePath: planFilePath,
-            EncodeScriptPath: encodeScriptPath);
+            EncodeScriptPath: encodeScriptPath,
+            RenderedFramesDirectory: renderedFrameSet.FramesDirectory,
+            RenderedFrameCount: renderedFrameSet.FrameCount,
+            OutputMp4Path: outputMp4Path);
     }
 
     private static async Task WritePlanFileAsync(string planFilePath, PreviewRenderPlan plan, CancellationToken cancellationToken)
@@ -44,19 +72,19 @@ public sealed class ExportPackageWriter
 
     private static async Task WriteEncodeScriptAsync(
         string scriptPath,
-        ExportRequest request,
+        string frameInputDirectory,
+        string outputMp4Path,
+        int fps,
         CancellationToken cancellationToken)
     {
-        var frameInputPattern = Path.Combine(request.Session.Paths.CaptureFramesDirectory, "frame_%06d.png");
-        var outputMp4Path = Path.Combine(request.OutputDirectory, SanitizeName(request.OutputName) + ".mp4");
-        var fps = Math.Max(1, request.PreviewPlan.Fps);
+        var frameInputPattern = Path.Combine(frameInputDirectory, "frame_%06d.png");
 
         var script = new StringBuilder()
             .AppendLine("@echo off")
             .AppendLine("setlocal")
-            .AppendLine($"set FRAME_PATTERN=\"{frameInputPattern}\"")
-            .AppendLine($"set OUTPUT_FILE=\"{outputMp4Path}\"")
-            .AppendLine($"ffmpeg -y -framerate {fps} -i %FRAME_PATTERN% -c:v libx264 -pix_fmt yuv420p -movflags +faststart %OUTPUT_FILE%")
+            .AppendLine($"set \"FRAME_PATTERN={frameInputPattern}\"")
+            .AppendLine($"set \"OUTPUT_FILE={outputMp4Path}\"")
+            .AppendLine($"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"%OUTPUT_FILE%\"")
             .AppendLine("if errorlevel 1 (")
             .AppendLine("  echo FFmpeg encode failed.")
             .AppendLine("  exit /b 1")

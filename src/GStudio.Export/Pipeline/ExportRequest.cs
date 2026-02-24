@@ -12,4 +12,7 @@ public sealed record ExportRequest(
 public sealed record ExportPackageResult(
     string PackageDirectory,
     string PlanFilePath,
-    string EncodeScriptPath);
+    string EncodeScriptPath,
+    string RenderedFramesDirectory,
+    int RenderedFrameCount,
+    string OutputMp4Path);

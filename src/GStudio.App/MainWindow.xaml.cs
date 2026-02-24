@@ -192,7 +192,8 @@ public partial class MainWindow : Window
                 OutputName: $"session_{_activeSession.SessionId}");
 
             var exportResult = await _exportPackageWriter.WriteAsync(exportRequest);
-            SetStatus($"Export package ready at {exportResult.PackageDirectory}");
+            SetStatus(
+                $"Export package ready: {exportResult.RenderedFrameCount} rendered frames at {exportResult.RenderedFramesDirectory}. Run {exportResult.EncodeScriptPath} to build MP4.");
         }
         catch (Exception ex)
         {
