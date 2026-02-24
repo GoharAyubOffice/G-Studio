@@ -54,17 +54,22 @@ public sealed class ExportPipelineTests
                 DurationSeconds: 1.0d / 30.0d,
                 Fps: 30);
 
-            var writer = new ExportPackageWriter();
+            var fakeEncoder = new FakeVideoEncoder();
+            var writer = new ExportPackageWriter(videoEncoder: fakeEncoder);
             var result = await writer.WriteAsync(new ExportRequest(
                 Session: session,
                 PreviewPlan: plan,
                 OutputDirectory: Path.Combine(root, "exports"),
-                OutputName: "demo"));
+                OutputName: "demo",
+                EncodeVideo: true));
 
             Assert.True(File.Exists(result.PlanFilePath));
             Assert.True(File.Exists(result.EncodeScriptPath));
             Assert.True(Directory.Exists(result.RenderedFramesDirectory));
             Assert.Equal(2, result.RenderedFrameCount);
+            Assert.True(result.VideoEncoded);
+            Assert.True(File.Exists(result.OutputMp4Path));
+            Assert.Single(fakeEncoder.Calls);
 
             var renderedFrames = Directory.GetFiles(result.RenderedFramesDirectory, "frame_*.png");
             Assert.Equal(2, renderedFrames.Length);
@@ -91,5 +96,17 @@ public sealed class ExportPipelineTests
 
         var path = Path.Combine(frameDirectory, $"frame_{index:D06}.png");
         bitmap.Save(path, ImageFormat.Png);
+    }
+
+    private sealed class FakeVideoEncoder : IVideoEncoder
+    {
+        public List<(string FramePattern, string OutputPath, int Fps)> Calls { get; } = [];
+
+        public Task EncodeAsync(string frameInputPattern, string outputMp4Path, int fps, CancellationToken cancellationToken = default)
+        {
+            Calls.Add((frameInputPattern, outputMp4Path, fps));
+            Directory.CreateDirectory(Path.GetDirectoryName(outputMp4Path) ?? ".");
+            return File.WriteAllBytesAsync(outputMp4Path, [0x00, 0x00, 0x00, 0x18], cancellationToken);
+        }
     }
 }

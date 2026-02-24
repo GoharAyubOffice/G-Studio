@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using GStudio.Capture.Audio;
 using GStudio.Common.Configuration;
 using GStudio.Common.Events;
 using FormsCursor = System.Windows.Forms.Cursor;
@@ -42,6 +43,9 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         var fps = Math.Max(1, context.Settings.Video.Fps);
         var frameInterval = TimeSpan.FromSeconds(1.0d / fps);
         var frameCount = 0;
+
+        await using var audioCapture = new WasapiAudioCaptureCoordinator(context.Session.Paths, context.Settings.Audio);
+        audioCapture.Start();
 
         if (context.Settings.Video.CaptureFrames)
         {
@@ -122,6 +126,10 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            await audioCapture.StopAsync().ConfigureAwait(false);
         }
 
         return new CaptureRunResult(

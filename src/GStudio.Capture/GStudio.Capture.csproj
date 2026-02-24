@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\GStudio.Common\GStudio.Common.csproj" />
     <ProjectReference Include="..\GStudio.Project\GStudio.Project.csproj" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <PropertyGroup>

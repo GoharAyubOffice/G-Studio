@@ -13,10 +13,14 @@ public sealed class ExportPackageWriter
     };
 
     private readonly CinematicFrameRenderer _frameRenderer;
+    private readonly IVideoEncoder _videoEncoder;
 
-    public ExportPackageWriter(CinematicFrameRenderer? frameRenderer = null)
+    public ExportPackageWriter(
+        CinematicFrameRenderer? frameRenderer = null,
+        IVideoEncoder? videoEncoder = null)
     {
         _frameRenderer = frameRenderer ?? new CinematicFrameRenderer();
+        _videoEncoder = videoEncoder ?? new FfmpegVideoEncoder();
     }
 
     public async Task<ExportPackageResult> WriteAsync(ExportRequest request, CancellationToken cancellationToken = default)
@@ -41,12 +45,27 @@ public sealed class ExportPackageWriter
             motionBlurStrength: request.Session.Manifest.Settings.MotionBlur.ScreenBlurStrength,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        var frameInputPattern = Path.Combine(renderedFrameSet.FramesDirectory, "frame_%06d.png");
+        var fps = Math.Max(1, request.PreviewPlan.Fps);
+
         await WriteEncodeScriptAsync(
             scriptPath: encodeScriptPath,
             frameInputDirectory: renderedFrameSet.FramesDirectory,
             outputMp4Path: outputMp4Path,
-            fps: Math.Max(1, request.PreviewPlan.Fps),
+            fps: fps,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        var videoEncoded = false;
+        if (request.EncodeVideo)
+        {
+            await _videoEncoder.EncodeAsync(
+                frameInputPattern,
+                outputMp4Path,
+                fps,
+                cancellationToken).ConfigureAwait(false);
+
+            videoEncoded = true;
+        }
 
         return new ExportPackageResult(
             PackageDirectory: packageDirectory,
@@ -54,7 +73,8 @@ public sealed class ExportPackageWriter
             EncodeScriptPath: encodeScriptPath,
             RenderedFramesDirectory: renderedFrameSet.FramesDirectory,
             RenderedFrameCount: renderedFrameSet.FrameCount,
-            OutputMp4Path: outputMp4Path);
+            OutputMp4Path: outputMp4Path,
+            VideoEncoded: videoEncoded);
     }
 
     private static async Task WritePlanFileAsync(string planFilePath, PreviewRenderPlan plan, CancellationToken cancellationToken)

@@ -19,6 +19,7 @@
 - [x] Implement deterministic preview plan generation at output FPS
 - [x] Implement cinematic frame renderer (camera transform + basic screen motion blur)
 - [x] Implement export package writer (render plan + rendered frames + encode script)
+- [x] Implement one-click app export that runs FFmpeg encode automatically
 
 ## App integration
 - [x] Build WPF control panel for recording and cinematic preview inspection
@@ -27,6 +28,6 @@
 
 ## Next priorities
 - [ ] Replace GDI frame capture with Windows Graphics Capture + D3D11 path
-- [ ] Add WASAPI mic + loopback capture and audio sync clock
+- [x] Add WASAPI mic + loopback capture to WAV tracks (clock alignment refinement pending)
 - [ ] Implement native Media Foundation H.264 mux export path
 - [ ] Add cursor sprite compositing in rendered export frames

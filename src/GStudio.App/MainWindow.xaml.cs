@@ -178,7 +178,7 @@ public partial class MainWindow : Window
 
         try
         {
-            SetStatus("Writing export package...");
+            SetStatus("Writing export package and encoding MP4...");
 
             var outputRoot = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -189,11 +189,13 @@ public partial class MainWindow : Window
                 Session: _activeSession,
                 PreviewPlan: _lastPreview,
                 OutputDirectory: outputRoot,
-                OutputName: $"session_{_activeSession.SessionId}");
+                OutputName: $"session_{_activeSession.SessionId}",
+                EncodeVideo: true);
 
             var exportResult = await _exportPackageWriter.WriteAsync(exportRequest);
-            SetStatus(
-                $"Export package ready: {exportResult.RenderedFrameCount} rendered frames at {exportResult.RenderedFramesDirectory}. Run {exportResult.EncodeScriptPath} to build MP4.");
+            SetStatus(exportResult.VideoEncoded
+                ? $"Export complete: {exportResult.OutputMp4Path}"
+                : $"Export package ready: {exportResult.RenderedFrameCount} rendered frames at {exportResult.RenderedFramesDirectory}. Run {exportResult.EncodeScriptPath} to build MP4.");
         }
         catch (Exception ex)
         {

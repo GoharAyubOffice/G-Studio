@@ -7,7 +7,8 @@ public sealed record ExportRequest(
     ProjectSession Session,
     PreviewRenderPlan PreviewPlan,
     string OutputDirectory,
-    string OutputName);
+    string OutputName,
+    bool EncodeVideo = true);
 
 public sealed record ExportPackageResult(
     string PackageDirectory,
@@ -15,4 +16,5 @@ public sealed record ExportPackageResult(
     string EncodeScriptPath,
     string RenderedFramesDirectory,
     int RenderedFrameCount,
-    string OutputMp4Path);
+    string OutputMp4Path,
+    bool VideoEncoded);

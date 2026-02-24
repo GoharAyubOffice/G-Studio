@@ -5,6 +5,9 @@ public sealed record ProjectPaths(
     string ProjectFilePath,
     string CaptureDirectory,
     string CaptureFramesDirectory,
+    string CaptureAudioDirectory,
+    string MicrophoneAudioPath,
+    string SystemAudioPath,
     string EventsDirectory,
     string PointerEventsPath,
     string KeyboardEventsPath,
@@ -31,6 +34,9 @@ public sealed record ProjectPaths(
             ProjectFilePath: Path.Combine(sessionRoot, "project.json"),
             CaptureDirectory: captureDirectory,
             CaptureFramesDirectory: Path.Combine(captureDirectory, "frames"),
+            CaptureAudioDirectory: Path.Combine(captureDirectory, "audio"),
+            MicrophoneAudioPath: Path.Combine(captureDirectory, "audio", "mic.wav"),
+            SystemAudioPath: Path.Combine(captureDirectory, "audio", "system.wav"),
             EventsDirectory: eventsDirectory,
             PointerEventsPath: Path.Combine(eventsDirectory, "pointer.ndjson"),
             KeyboardEventsPath: Path.Combine(eventsDirectory, "keyboard.ndjson"),
@@ -51,6 +57,7 @@ public sealed record ProjectPaths(
         yield return RootDirectory;
         yield return CaptureDirectory;
         yield return CaptureFramesDirectory;
+        yield return CaptureAudioDirectory;
         yield return EventsDirectory;
         yield return EditsDirectory;
         yield return CacheDirectory;

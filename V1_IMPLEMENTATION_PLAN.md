@@ -12,6 +12,7 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
   
 ## Pipeline status update
 - Export now renders cinematic frames from camera transforms before encoding.
+- App export now performs one-click MP4 generation by invoking FFmpeg directly.
 - Export package includes:
   - `render_plan.json`
   - `rendered_frames/frame_*.png` (camera-follow output)
@@ -25,6 +26,7 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
    - frame sequence writing (`capture/frames/frame_000001.png`)
    - pointer move/down/up event logging
    - keyboard shortcut sampling
+   - optional WASAPI mic + system loopback audio capture to WAV (`capture/audio`)
 5. Cinematic pipeline:
    - auto-zoom segment generation from click events
    - overlap merge logic
@@ -41,3 +43,8 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 3. Implement native Media Foundation H.264 export/mux path.
 4. Add proxy generation and GPU preview compositor.
 5. Add cursor sprite compositing and final audio mix in export path.
+
+## Remaining focus
+1. Replace GDI capture with WGC + D3D11 for high-FPS reliability.
+2. Add timeline-based audio alignment/mix before encode.
+3. Replace FFmpeg runtime dependency with native Media Foundation mux export.
