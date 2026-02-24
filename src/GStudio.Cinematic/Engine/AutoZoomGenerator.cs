@@ -47,10 +47,11 @@ public sealed class AutoZoomGenerator
                 TriggerCount: 1));
         }
 
-        return segments
+        var orderedSegments = segments
             .OrderBy(static segment => segment.Start)
-            .ThenBy(static segment => segment.End)
-            .ToArray();
+            .ThenBy(static segment => segment.End);
+
+        return SmoothNearbyGaps(orderedSegments, viewport, settings);
     }
 
     private static bool IsPrimaryClick(PointerEvent pointerEvent)
@@ -66,6 +67,43 @@ public sealed class AutoZoomGenerator
         }
 
         return string.Equals(pointerEvent.Btn, "left", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<ZoomSegment> SmoothNearbyGaps(
+        IOrderedEnumerable<ZoomSegment> sortedSegments,
+        RectD viewport,
+        CameraFollowSettings settings)
+    {
+        var segments = sortedSegments.ToArray();
+        if (segments.Length <= 1)
+        {
+            return segments;
+        }
+
+        var bridgeGapSeconds = Math.Max(0.12d, settings.PreRollSeconds + 0.05d);
+        var bridgeDistancePixels = Math.Max(48.0d, Math.Min(viewport.Width, viewport.Height) * 0.25d);
+
+        for (var index = 0; index < segments.Length - 1; index++)
+        {
+            var current = segments[index];
+            var next = segments[index + 1];
+
+            var gap = next.Start - current.End;
+            if (gap <= 0.0d || gap > bridgeGapSeconds)
+            {
+                continue;
+            }
+
+            var distance = current.Center.DistanceTo(next.Center);
+            if (distance > bridgeDistancePixels)
+            {
+                continue;
+            }
+
+            segments[index] = current with { End = next.Start };
+        }
+
+        return segments;
     }
 
 }

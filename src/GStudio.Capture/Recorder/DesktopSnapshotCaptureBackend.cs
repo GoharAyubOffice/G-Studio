@@ -3,10 +3,12 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using GStudio.Capture.Audio;
 using GStudio.Capture.Recorder.FrameProviders;
 using GStudio.Common.Configuration;
 using GStudio.Common.Events;
+using GStudio.Project.Store;
 using FormsCursor = System.Windows.Forms.Cursor;
 
 namespace GStudio.Capture.Recorder;
@@ -35,7 +37,7 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
     public async Task<CaptureRunResult> RunAsync(CaptureRunContext context, CancellationToken cancellationToken = default)
     {
-        using var frameProvider = DesktopFrameProviderFactory.Create(context.Settings.Video, out var backendName);
+        using var frameProvider = DesktopFrameProviderFactory.Create(context.Settings.Video, out var backendName, out var backendDetails);
         var bounds = frameProvider.CaptureBounds;
 
         var outputWidth = ResolveOutputSize(context.Settings.Video.Width, bounds.Width);
@@ -55,6 +57,10 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             Directory.CreateDirectory(context.Session.Paths.CaptureFramesDirectory);
         }
 
+        await using var frameTimelineWriter = context.Settings.Video.CaptureFrames
+            ? new NdjsonStreamWriter<FrameTimestampEvent>(context.Session.Paths.CaptureFrameTimelinePath)
+            : null;
+
         await context.EventLogWriter.WriteWindowAsync(
             new WindowEvent(
                 T: 0.0d,
@@ -68,6 +74,19 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 ColorSpace: "sRGB"),
             cancellationToken).ConfigureAwait(false);
 
+        await context.EventLogWriter.WriteWindowAsync(
+            new WindowEvent(
+                T: 0.0d,
+                Type: "captureBackend",
+                X: bounds.Left,
+                Y: bounds.Top,
+                Width: outputWidth,
+                Height: outputHeight,
+                Dpi: 96.0d,
+                Title: backendName,
+                ColorSpace: backendDetails),
+            cancellationToken).ConfigureAwait(false);
+
         var stopwatch = Stopwatch.StartNew();
         var frameTask = RunFrameLoopAsync(
             frameProvider,
@@ -76,6 +95,8 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             context.Session.Paths.CaptureFramesDirectory,
             context.Settings.Video.CaptureFrames,
             frameInterval,
+            () => stopwatch.Elapsed.TotalSeconds,
+            frameTimelineWriter,
             cancellationToken);
 
         var inputTask = RunInputLoopAsync(
@@ -116,33 +137,65 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         string frameDirectory,
         bool captureFrames,
         TimeSpan frameInterval,
+        Func<double> timestampProvider,
+        NdjsonStreamWriter<FrameTimestampEvent>? frameTimelineWriter,
         CancellationToken cancellationToken)
     {
         var frameCount = 0;
-        string? previousFramePath = null;
-
         using var timer = new PeriodicTimer(frameInterval);
+
+        if (!captureFrames)
+        {
+            try
+            {
+                while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    frameCount++;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+
+            return frameCount;
+        }
+
+        var queue = Channel.CreateBounded<PendingFrame>(new BoundedChannelOptions(12)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.Wait
+        });
+
+        var writerTask = RunFrameWriterLoopAsync(
+            queue.Reader,
+            outputWidth,
+            outputHeight,
+            frameDirectory,
+            frameTimelineWriter,
+            cancellationToken);
 
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                if (captureFrames)
-                {
-                    CaptureFrame(
-                        frameProvider,
-                        outputWidth,
-                        outputHeight,
-                        frameDirectory,
-                        frameCount,
-                        ref previousFramePath);
-                }
+                var time = timestampProvider();
+
+                var capturedBitmap = TryCaptureBitmap(frameProvider);
+                await queue.Writer
+                    .WriteAsync(new PendingFrame(frameCount, time, capturedBitmap), cancellationToken)
+                    .ConfigureAwait(false);
 
                 frameCount++;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            queue.Writer.TryComplete();
+            await writerTask.ConfigureAwait(false);
         }
 
         return frameCount;
@@ -241,8 +294,59 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         }
     }
 
-    private static void CaptureFrame(
-        IDesktopFrameProvider frameProvider,
+    private static async Task RunFrameWriterLoopAsync(
+        ChannelReader<PendingFrame> reader,
+        int outputWidth,
+        int outputHeight,
+        string frameDirectory,
+        NdjsonStreamWriter<FrameTimestampEvent>? frameTimelineWriter,
+        CancellationToken cancellationToken)
+    {
+        string? previousFramePath = null;
+
+        await foreach (var pending in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var frameWritten = WriteFrame(
+                pending.Bitmap,
+                outputWidth,
+                outputHeight,
+                frameDirectory,
+                pending.Index,
+                ref previousFramePath);
+
+            if (frameWritten && frameTimelineWriter is not null)
+            {
+                await frameTimelineWriter
+                    .WriteAsync(new FrameTimestampEvent(pending.Time, pending.Index), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static Bitmap? TryCaptureBitmap(IDesktopFrameProvider frameProvider)
+    {
+        Bitmap? capturedBitmap = null;
+
+        try
+        {
+            var hasCapturedFrame = frameProvider.TryCaptureFrame(out capturedBitmap);
+            if (hasCapturedFrame && capturedBitmap is not null)
+            {
+                return capturedBitmap;
+            }
+
+            capturedBitmap?.Dispose();
+            return null;
+        }
+        catch
+        {
+            capturedBitmap?.Dispose();
+            return null;
+        }
+    }
+
+    private static bool WriteFrame(
+        Bitmap? capturedBitmap,
         int outputWidth,
         int outputHeight,
         string frameDirectory,
@@ -251,58 +355,55 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
     {
         var framePath = Path.Combine(frameDirectory, $"frame_{frameIndex:D06}.png");
 
-        Bitmap? capturedBitmap = null;
-        var hasCapturedFrame = false;
-
-        try
-        {
-            hasCapturedFrame = frameProvider.TryCaptureFrame(out capturedBitmap);
-        }
-        catch
-        {
-            capturedBitmap?.Dispose();
-            capturedBitmap = null;
-            hasCapturedFrame = false;
-        }
-
-        if (!hasCapturedFrame || capturedBitmap is null)
+        if (capturedBitmap is null)
         {
             if (!string.IsNullOrWhiteSpace(previousFramePath) && File.Exists(previousFramePath))
             {
                 File.Copy(previousFramePath, framePath, overwrite: true);
                 previousFramePath = framePath;
-                return;
+                return true;
             }
 
-            capturedBitmap = new Bitmap(frameProvider.CaptureBounds.Width, frameProvider.CaptureBounds.Height, PixelFormat.Format32bppArgb);
-            using var fallbackGraphics = Graphics.FromImage(capturedBitmap);
-            fallbackGraphics.Clear(Color.Black);
-        }
+            using var blackFrame = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
+            using (var graphics = Graphics.FromImage(blackFrame))
+            {
+                graphics.Clear(Color.Black);
+            }
 
-        using var sourceBitmap = capturedBitmap;
-        if (outputWidth == sourceBitmap.Width && outputHeight == sourceBitmap.Height)
-        {
-            sourceBitmap.Save(framePath, ImageFormat.Png);
+            blackFrame.Save(framePath, ImageFormat.Png);
             previousFramePath = framePath;
-            return;
+            return true;
         }
 
-        using var outputBitmap = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
-        using var outputGraphics = Graphics.FromImage(outputBitmap);
-        outputGraphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        outputGraphics.SmoothingMode = SmoothingMode.HighQuality;
-        outputGraphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        outputGraphics.CompositingQuality = CompositingQuality.HighQuality;
+        using (capturedBitmap)
+        {
+            if (outputWidth == capturedBitmap.Width && outputHeight == capturedBitmap.Height)
+            {
+                capturedBitmap.Save(framePath, ImageFormat.Png);
+                previousFramePath = framePath;
+                return true;
+            }
 
-        outputGraphics.DrawImage(
-            sourceBitmap,
-            new Rectangle(0, 0, outputWidth, outputHeight),
-            new Rectangle(0, 0, sourceBitmap.Width, sourceBitmap.Height),
-            GraphicsUnit.Pixel);
+            using var outputBitmap = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
+            using var outputGraphics = Graphics.FromImage(outputBitmap);
+            outputGraphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            outputGraphics.SmoothingMode = SmoothingMode.HighQuality;
+            outputGraphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            outputGraphics.CompositingQuality = CompositingQuality.HighQuality;
 
-        outputBitmap.Save(framePath, ImageFormat.Png);
-        previousFramePath = framePath;
+            outputGraphics.DrawImage(
+                capturedBitmap,
+                new Rectangle(0, 0, outputWidth, outputHeight),
+                new Rectangle(0, 0, capturedBitmap.Width, capturedBitmap.Height),
+                GraphicsUnit.Pixel);
+
+            outputBitmap.Save(framePath, ImageFormat.Png);
+            previousFramePath = framePath;
+            return true;
+        }
     }
+
+    private sealed record PendingFrame(int Index, double Time, Bitmap? Bitmap);
 
     private static int ResolveOutputSize(int configuredSize, int fallbackSize)
     {

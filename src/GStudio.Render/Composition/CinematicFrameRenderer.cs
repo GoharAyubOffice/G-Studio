@@ -1,7 +1,9 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using GStudio.Common.Events;
 using GStudio.Common.Geometry;
+using GStudio.Project.Store;
 using GStudio.Render.Preview;
 
 namespace GStudio.Render.Composition;
@@ -15,6 +17,7 @@ public sealed class CinematicFrameRenderer
         int designWidth,
         int designHeight,
         double motionBlurStrength,
+        string? frameTimelinePath = null,
         CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(sourceFramesDirectory))
@@ -45,6 +48,8 @@ public sealed class CinematicFrameRenderer
 
         var safeDesignWidth = Math.Max(1, designWidth);
         var safeDesignHeight = Math.Max(1, designHeight);
+        var frameTimeline = await LoadFrameTimelineAsync(frameTimelinePath, cancellationToken).ConfigureAwait(false);
+        var timelineCursor = 0;
 
         string? previousRenderedFramePath = null;
         ScreenPoint? previousCenter = null;
@@ -52,7 +57,14 @@ public sealed class CinematicFrameRenderer
         for (var frameIndex = 0; frameIndex < plan.Frames.Count; frameIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var sourcePath = sourceFrames[Math.Min(frameIndex, sourceFrames.Length - 1)];
+            var sourceIndex = ResolveSourceFrameIndex(
+                plan.Frames[frameIndex].Time,
+                frameIndex,
+                sourceFrames.Length,
+                frameTimeline,
+                ref timelineCursor);
+
+            var sourcePath = sourceFrames[sourceIndex];
             var outputPath = Path.Combine(outputFramesDirectory, $"frame_{frameIndex:D06}.png");
 
             using var sourceBitmap = new Bitmap(sourcePath);
@@ -83,6 +95,62 @@ public sealed class CinematicFrameRenderer
             FrameCount: plan.Frames.Count,
             Width: outputWidth,
             Height: outputHeight);
+    }
+
+    private static int ResolveSourceFrameIndex(
+        double outputTime,
+        int outputFrameIndex,
+        int sourceFrameCount,
+        IReadOnlyList<FrameTimestampEvent> frameTimeline,
+        ref int timelineCursor)
+    {
+        if (sourceFrameCount <= 1)
+        {
+            return 0;
+        }
+
+        if (frameTimeline.Count == 0)
+        {
+            return Math.Clamp(outputFrameIndex, 0, sourceFrameCount - 1);
+        }
+
+        if (outputTime <= frameTimeline[0].Time)
+        {
+            return Math.Clamp(frameTimeline[0].Index, 0, sourceFrameCount - 1);
+        }
+
+        while (
+            timelineCursor + 1 < frameTimeline.Count &&
+            frameTimeline[timelineCursor + 1].Time <= outputTime)
+        {
+            timelineCursor++;
+        }
+
+        return Math.Clamp(frameTimeline[timelineCursor].Index, 0, sourceFrameCount - 1);
+    }
+
+    private static async Task<IReadOnlyList<FrameTimestampEvent>> LoadFrameTimelineAsync(
+        string? frameTimelinePath,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(frameTimelinePath) || !File.Exists(frameTimelinePath))
+        {
+            return Array.Empty<FrameTimestampEvent>();
+        }
+
+        var timeline = await NdjsonStreamReader
+            .ReadAllAsync<FrameTimestampEvent>(frameTimelinePath, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        if (timeline.Count == 0)
+        {
+            return Array.Empty<FrameTimestampEvent>();
+        }
+
+        return timeline
+            .Where(eventItem => eventItem.Index >= 0 && double.IsFinite(eventItem.Time))
+            .OrderBy(static eventItem => eventItem.Time)
+            .ToArray();
     }
 
     private static Bitmap RenderFrame(

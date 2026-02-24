@@ -188,6 +188,72 @@ public sealed class ExportPipelineTests
         }
     }
 
+    [Fact]
+    public async Task CinematicFrameRenderer_UsesFrameTimelineToPreventFastForwardMapping()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"));
+        var sourceDir = Path.Combine(root, "source");
+        var outputDir = Path.Combine(root, "output");
+        var timelinePath = Path.Combine(root, "frame_timestamps.ndjson");
+
+        Directory.CreateDirectory(sourceDir);
+
+        try
+        {
+            using (var first = new Bitmap(320, 180, PixelFormat.Format32bppArgb))
+            {
+                using var graphics = Graphics.FromImage(first);
+                graphics.Clear(Color.DarkRed);
+                first.Save(Path.Combine(sourceDir, "frame_000000.png"), ImageFormat.Png);
+            }
+
+            using (var second = new Bitmap(320, 180, PixelFormat.Format32bppArgb))
+            {
+                using var graphics = Graphics.FromImage(second);
+                graphics.Clear(Color.DarkBlue);
+                second.Save(Path.Combine(sourceDir, "frame_000001.png"), ImageFormat.Png);
+            }
+
+            await File.WriteAllLinesAsync(timelinePath,
+            [
+                "{\"t\":0.0,\"i\":0}",
+                "{\"t\":3.0,\"i\":1}"
+            ]);
+
+            var frames = new List<PreviewFrame>();
+            for (var index = 0; index < 4; index++)
+            {
+                frames.Add(new PreviewFrame(
+                    FrameIndex: index,
+                    Time: index,
+                    Camera: new CameraTransform(index, new ScreenPoint(160, 90), 1.0d),
+                    Cursor: new CursorSample(index, new ScreenPoint(40, 40), true)));
+            }
+
+            var plan = new PreviewRenderPlan(
+                Frames: frames,
+                ZoomSegments: Array.Empty<ZoomSegment>(),
+                DurationSeconds: 3.0d,
+                Fps: 1);
+
+            var renderer = new CinematicFrameRenderer();
+            await renderer.RenderAsync(plan, sourceDir, outputDir, 320, 180, 0.0d, frameTimelinePath: timelinePath);
+
+            using var frame2 = new Bitmap(Path.Combine(outputDir, "frame_000002.png"));
+            using var frame3 = new Bitmap(Path.Combine(outputDir, "frame_000003.png"));
+
+            var pixel2 = frame2.GetPixel(30, 30);
+            var pixel3 = frame3.GetPixel(30, 30);
+
+            Assert.True(pixel2.R > pixel2.B);
+            Assert.True(pixel3.B > pixel3.R);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static void CreateTestFrame(string frameDirectory, int index, Color background, Color inset)
     {
         Directory.CreateDirectory(frameDirectory);

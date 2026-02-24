@@ -43,6 +43,7 @@ public sealed class ExportPackageWriter
             designWidth: request.Session.Manifest.Settings.Video.Width,
             designHeight: request.Session.Manifest.Settings.Video.Height,
             motionBlurStrength: request.Session.Manifest.Settings.MotionBlur.ScreenBlurStrength,
+            frameTimelinePath: request.Session.Paths.CaptureFrameTimelinePath,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var frameInputPattern = Path.Combine(renderedFrameSet.FramesDirectory, "frame_%06d.png");
