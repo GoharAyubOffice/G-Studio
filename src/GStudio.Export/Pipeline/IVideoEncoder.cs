@@ -4,6 +4,7 @@ public sealed record VideoEncodeRequest(
     string FrameInputPattern,
     string OutputMp4Path,
     int Fps,
+    double? TargetDurationSeconds = null,
     string? MicrophoneAudioPath = null,
     string? SystemAudioPath = null);
 

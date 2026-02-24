@@ -47,6 +47,7 @@ public sealed class ExportPackageWriter
 
         var frameInputPattern = Path.Combine(renderedFrameSet.FramesDirectory, "frame_%06d.png");
         var fps = Math.Max(1, request.PreviewPlan.Fps);
+        var targetDurationSeconds = renderedFrameSet.FrameCount / (double)fps;
         var microphoneAudioPath = ResolveOptionalFilePath(request.Session.Paths.MicrophoneAudioPath);
         var systemAudioPath = ResolveOptionalFilePath(request.Session.Paths.SystemAudioPath);
 
@@ -54,6 +55,7 @@ public sealed class ExportPackageWriter
             FrameInputPattern: frameInputPattern,
             OutputMp4Path: outputMp4Path,
             Fps: fps,
+            TargetDurationSeconds: targetDurationSeconds,
             MicrophoneAudioPath: microphoneAudioPath,
             SystemAudioPath: systemAudioPath);
 
@@ -62,6 +64,7 @@ public sealed class ExportPackageWriter
             frameInputDirectory: renderedFrameSet.FramesDirectory,
             outputMp4Path: outputMp4Path,
             fps: fps,
+            targetDurationSeconds: targetDurationSeconds,
             microphoneAudioPath: microphoneAudioPath,
             systemAudioPath: systemAudioPath,
             cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -102,12 +105,13 @@ public sealed class ExportPackageWriter
         string frameInputDirectory,
         string outputMp4Path,
         int fps,
+        double targetDurationSeconds,
         string? microphoneAudioPath,
         string? systemAudioPath,
         CancellationToken cancellationToken)
     {
         var frameInputPattern = Path.Combine(frameInputDirectory, "frame_%06d.png");
-        var ffmpegCommand = BuildScriptCommand(frameInputPattern, outputMp4Path, fps, microphoneAudioPath, systemAudioPath);
+        var ffmpegCommand = BuildScriptCommand(frameInputPattern, outputMp4Path, fps, targetDurationSeconds, microphoneAudioPath, systemAudioPath);
 
         var script = new StringBuilder()
             .AppendLine("@echo off")
@@ -130,9 +134,11 @@ public sealed class ExportPackageWriter
         string frameInputPattern,
         string outputMp4Path,
         int fps,
+        double targetDurationSeconds,
         string? microphoneAudioPath,
         string? systemAudioPath)
     {
+        var durationText = targetDurationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         var hasMic = !string.IsNullOrWhiteSpace(microphoneAudioPath) && File.Exists(microphoneAudioPath);
         var hasSystem = !string.IsNullOrWhiteSpace(systemAudioPath) && File.Exists(systemAudioPath);
 
@@ -140,8 +146,8 @@ public sealed class ExportPackageWriter
         {
             return
                 $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -i \"{microphoneAudioPath}\" -i \"{systemAudioPath}\" " +
-                "-filter_complex \"[1:a]aresample=async=1:first_pts=0[a1];[2:a]aresample=async=1:first_pts=0[a2];[a1][a2]amix=inputs=2:duration=longest[aout]\" -map 0:v:0 -map \"[aout]\" " +
-                "-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"%OUTPUT_FILE%\"";
+                $"-filter_complex \"[1:a]aresample=async=1:first_pts=0,apad,atrim=0:{durationText}[a1];[2:a]aresample=async=1:first_pts=0,apad,atrim=0:{durationText}[a2];[a1][a2]amix=inputs=2:duration=longest,atrim=0:{durationText}[aout]\" -map 0:v:0 -map \"[aout]\" " +
+                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart -t {durationText} \"%OUTPUT_FILE%\"";
         }
 
         if (hasMic || hasSystem)
@@ -149,10 +155,10 @@ public sealed class ExportPackageWriter
             var audioPath = hasMic ? microphoneAudioPath! : systemAudioPath!;
             return
                 $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -i \"{audioPath}\" -map 0:v:0 -map 1:a:0 " +
-                "-c:v libx264 -pix_fmt yuv420p -filter:a \"aresample=async=1:first_pts=0\" -c:a aac -shortest -movflags +faststart \"%OUTPUT_FILE%\"";
+                $"-c:v libx264 -pix_fmt yuv420p -filter:a \"aresample=async=1:first_pts=0,apad,atrim=0:{durationText}\" -c:a aac -movflags +faststart -t {durationText} \"%OUTPUT_FILE%\"";
         }
 
-        return $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"%OUTPUT_FILE%\"";
+        return $"ffmpeg -y -framerate {fps} -i \"%FRAME_PATTERN%\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart -t {durationText} \"%OUTPUT_FILE%\"";
     }
 
     private static string? ResolveOptionalFilePath(string candidatePath)

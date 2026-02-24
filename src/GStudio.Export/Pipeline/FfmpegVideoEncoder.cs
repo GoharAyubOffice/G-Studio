@@ -15,6 +15,7 @@ public sealed class FfmpegVideoEncoder : IVideoEncoder
             request.FrameInputPattern,
             request.OutputMp4Path,
             safeFps,
+            request.TargetDurationSeconds,
             request.MicrophoneAudioPath,
             request.SystemAudioPath);
 
@@ -59,30 +60,38 @@ public sealed class FfmpegVideoEncoder : IVideoEncoder
         string frameInputPattern,
         string outputMp4Path,
         int fps,
+        double? targetDurationSeconds,
         string? microphoneAudioPath,
         string? systemAudioPath)
     {
+        var durationSeconds = targetDurationSeconds.GetValueOrDefault(0.0d);
+        var hasDuration = durationSeconds > 0.01d;
+        var durationText = durationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
         var hasMic = !string.IsNullOrWhiteSpace(microphoneAudioPath) && File.Exists(microphoneAudioPath);
         var hasSystem = !string.IsNullOrWhiteSpace(systemAudioPath) && File.Exists(systemAudioPath);
 
         if (hasMic && hasSystem)
         {
+            var durationOption = hasDuration ? $" -t {durationText}" : string.Empty;
             return
                 $"-y -framerate {fps} -i \"{frameInputPattern}\" -i \"{microphoneAudioPath}\" -i \"{systemAudioPath}\" " +
-                "-filter_complex \"[1:a]aresample=async=1:first_pts=0[a1];[2:a]aresample=async=1:first_pts=0[a2];[a1][a2]amix=inputs=2:duration=longest[aout]\" -map 0:v:0 -map \"[aout]\" " +
-                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
+                $"-filter_complex \"[1:a]aresample=async=1:first_pts=0,apad,atrim=0:{durationText}[a1];[2:a]aresample=async=1:first_pts=0,apad,atrim=0:{durationText}[a2];[a1][a2]amix=inputs=2:duration=longest,atrim=0:{durationText}[aout]\" -map 0:v:0 -map \"[aout]\" " +
+                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart{durationOption} \"{outputMp4Path}\"";
         }
 
         if (hasMic || hasSystem)
         {
             var audioPath = hasMic ? microphoneAudioPath! : systemAudioPath!;
+            var durationOption = hasDuration ? $" -t {durationText}" : string.Empty;
             return
                 $"-y -framerate {fps} -i \"{frameInputPattern}\" -i \"{audioPath}\" -map 0:v:0 -map 1:a:0 " +
-                $"-c:v libx264 -pix_fmt yuv420p -filter:a \"aresample=async=1:first_pts=0\" -c:a aac -shortest -movflags +faststart \"{outputMp4Path}\"";
+                $"-c:v libx264 -pix_fmt yuv420p -filter:a \"aresample=async=1:first_pts=0,apad,atrim=0:{durationText}\" -c:a aac -movflags +faststart{durationOption} \"{outputMp4Path}\"";
         }
 
+        var videoDurationOption = hasDuration ? $" -t {durationText}" : string.Empty;
         return
-            $"-y -framerate {fps} -i \"{frameInputPattern}\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart \"{outputMp4Path}\"";
+            $"-y -framerate {fps} -i \"{frameInputPattern}\" -c:v libx264 -pix_fmt yuv420p -movflags +faststart{videoDurationOption} \"{outputMp4Path}\"";
     }
 
     private static string BuildFailureDetails(int exitCode, string stdOut, string stdErr)
