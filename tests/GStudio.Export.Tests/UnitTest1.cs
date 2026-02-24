@@ -75,6 +75,8 @@ public sealed class ExportPipelineTests
             Assert.Single(fakeEncoder.Calls);
             Assert.NotNull(fakeEncoder.Calls[0].MicrophoneAudioPath);
             Assert.NotNull(fakeEncoder.Calls[0].SystemAudioPath);
+            Assert.True(fakeEncoder.Calls[0].PreferMediaFoundation);
+            Assert.True(fakeEncoder.Calls[0].AllowFfmpegFallback);
 
             var renderedFrames = Directory.GetFiles(result.RenderedFramesDirectory, "frame_*.png");
             Assert.Equal(2, renderedFrames.Length);
@@ -84,6 +86,85 @@ public sealed class ExportPipelineTests
             Assert.Contains("ffmpeg -y -framerate 30", script, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("amix=inputs=2", script, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("aresample=async=1:first_pts=0", script, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExportPackageWriter_MapsEncoderModeToEncodeFlags()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var settings = SessionSettings.CreateDefault() with
+            {
+                Video = SessionSettings.CreateDefault().Video with
+                {
+                    Width = 320,
+                    Height = 180,
+                    Fps = 30,
+                    CaptureFrames = true
+                }
+            };
+
+            var store = new ProjectSessionStore(Path.Combine(root, "projects"));
+            var session = await store.CreateSessionAsync(settings);
+
+            CreateTestFrame(session.Paths.CaptureFramesDirectory, 0, Color.DarkRed, Color.White);
+            CreateTestFrame(session.Paths.CaptureFramesDirectory, 1, Color.DarkBlue, Color.White);
+
+            var plan = new PreviewRenderPlan(
+                Frames:
+                [
+                    new PreviewFrame(
+                        FrameIndex: 0,
+                        Time: 0.0d,
+                        Camera: new CameraTransform(0.0d, new ScreenPoint(160.0d, 90.0d), 1.0d),
+                        Cursor: new CursorSample(0.0d, new ScreenPoint(160.0d, 90.0d), false)),
+                    new PreviewFrame(
+                        FrameIndex: 1,
+                        Time: 1.0d / 30.0d,
+                        Camera: new CameraTransform(1.0d / 30.0d, new ScreenPoint(160.0d, 90.0d), 1.0d),
+                        Cursor: new CursorSample(1.0d / 30.0d, new ScreenPoint(160.0d, 90.0d), false))
+                ],
+                ZoomSegments: Array.Empty<ZoomSegment>(),
+                DurationSeconds: 1.0d / 30.0d,
+                Fps: 30);
+
+            var fakeEncoder = new FakeVideoEncoder();
+            var writer = new ExportPackageWriter(videoEncoder: fakeEncoder);
+
+            foreach (var mode in new[]
+                     {
+                         VideoEncoderMode.Adaptive,
+                         VideoEncoderMode.NativeOnly,
+                         VideoEncoderMode.FfmpegOnly
+                     })
+            {
+                await writer.WriteAsync(new ExportRequest(
+                    Session: session,
+                    PreviewPlan: plan,
+                    OutputDirectory: Path.Combine(root, "exports"),
+                    OutputName: $"mode-{mode}",
+                    EncodeVideo: true,
+                    EncoderMode: mode));
+            }
+
+            Assert.Equal(3, fakeEncoder.Calls.Count);
+
+            Assert.True(fakeEncoder.Calls[0].PreferMediaFoundation);
+            Assert.True(fakeEncoder.Calls[0].AllowFfmpegFallback);
+
+            Assert.True(fakeEncoder.Calls[1].PreferMediaFoundation);
+            Assert.False(fakeEncoder.Calls[1].AllowFfmpegFallback);
+
+            Assert.False(fakeEncoder.Calls[2].PreferMediaFoundation);
+            Assert.False(fakeEncoder.Calls[2].AllowFfmpegFallback);
         }
         finally
         {
@@ -112,6 +193,55 @@ public sealed class ExportPipelineTests
         Assert.Single(fallback.Calls);
         Assert.True(File.Exists(outputPath));
         Directory.Delete(Path.GetDirectoryName(outputPath)!, recursive: true);
+    }
+
+    [Fact]
+    public async Task AdaptiveVideoEncoder_SkipsNativePathForLongAdaptiveExports()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"), "out.mp4");
+        var native = new TrackingVideoEncoder();
+        var fallback = new FakeVideoEncoder();
+        var adaptive = new AdaptiveVideoEncoder(
+            mediaFoundationEncoder: native,
+            ffmpegEncoder: fallback);
+
+        await adaptive.EncodeAsync(new VideoEncodeRequest(
+            FrameInputPattern: "C:\\tmp\\frame_%06d.png",
+            OutputMp4Path: outputPath,
+            Fps: 30,
+            FrameCount: MediaFoundationVideoEncoder.RecommendedMaxFrameCount + 1,
+            TargetDurationSeconds: 30.0d,
+            PreferMediaFoundation: true,
+            AllowFfmpegFallback: true));
+
+        Assert.Equal(0, native.CallCount);
+        Assert.Single(fallback.Calls);
+        Assert.True(File.Exists(outputPath));
+        Directory.Delete(Path.GetDirectoryName(outputPath)!, recursive: true);
+    }
+
+    [Fact]
+    public async Task AdaptiveVideoEncoder_RejectsLongNativeOnlyExportsBeforeRunningEncoders()
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"), "out.mp4");
+        var native = new TrackingVideoEncoder();
+        var fallback = new FakeVideoEncoder();
+        var adaptive = new AdaptiveVideoEncoder(
+            mediaFoundationEncoder: native,
+            ffmpegEncoder: fallback);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => adaptive.EncodeAsync(new VideoEncodeRequest(
+            FrameInputPattern: "C:\\tmp\\frame_%06d.png",
+            OutputMp4Path: outputPath,
+            Fps: 30,
+            FrameCount: MediaFoundationVideoEncoder.RecommendedMaxFrameCount + 25,
+            TargetDurationSeconds: 30.0d,
+            PreferMediaFoundation: true,
+            AllowFfmpegFallback: false)));
+
+        Assert.Contains("supports up to", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, native.CallCount);
+        Assert.Empty(fallback.Calls);
     }
 
     [Fact]
@@ -296,6 +426,17 @@ public sealed class ExportPipelineTests
             Calls.Add(request);
             Directory.CreateDirectory(Path.GetDirectoryName(request.OutputMp4Path) ?? ".");
             return File.WriteAllBytesAsync(request.OutputMp4Path, [0x00, 0x00, 0x00, 0x18], cancellationToken);
+        }
+    }
+
+    private sealed class TrackingVideoEncoder : IVideoEncoder
+    {
+        public int CallCount { get; private set; }
+
+        public Task EncodeAsync(VideoEncodeRequest request, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.CompletedTask;
         }
     }
 

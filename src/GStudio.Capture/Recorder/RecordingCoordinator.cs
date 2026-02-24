@@ -76,7 +76,20 @@ public sealed class RecordingCoordinator : IAsyncDisposable
             FrameCount = runResult.FrameCount,
             PointerEventCount = _eventLogWriter.PointerCount,
             KeyboardEventCount = _eventLogWriter.KeyboardCount,
-            WindowEventCount = _eventLogWriter.WindowCount
+            WindowEventCount = _eventLogWriter.WindowCount,
+            TargetFps = runResult.TargetFps,
+            EffectiveFps = runResult.EffectiveFps,
+            CaptureBackend = runResult.BackendName,
+            CaptureBackendDetails = runResult.BackendDetails,
+            CaptureMissCount = runResult.CaptureMissCount,
+            ReusedFrameCount = runResult.ReusedFrameCount,
+            FrameTimelineCount = runResult.FrameTimelineCount,
+            TimelineDurationSeconds = runResult.TimelineDurationSeconds,
+            TimelineEffectiveFps = runResult.TimelineEffectiveFps,
+            AverageFrameIntervalMs = runResult.AverageFrameIntervalMs,
+            FrameIntervalJitterMs = runResult.FrameIntervalJitterMs,
+            MaxFrameIntervalMs = runResult.MaxFrameIntervalMs,
+            DurationDriftMs = runResult.DurationDriftMs
         };
 
         await _sessionStore.CompleteSessionAsync(ActiveSession, stats, cancellationToken).ConfigureAwait(false);

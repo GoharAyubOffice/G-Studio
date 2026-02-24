@@ -81,6 +81,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
@@ -106,10 +107,24 @@
                             MinWidth="168"
                             Margin="0,0,0,0" />
 
-                    <Border Grid.Column="4"
-                            HorizontalAlignment="Right"
-                            Background="#FFF3E8D6"
-                            BorderBrush="#60A38560"
+                    <StackPanel Grid.Column="4"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Margin="16,0,12,0">
+                        <TextBlock Text="Encoder"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Foreground="#AA1B2733"
+                                   FontWeight="SemiBold" />
+                        <ComboBox x:Name="EncoderModeCombo"
+                                  Width="170"
+                                  SelectedIndex="0" />
+                    </StackPanel>
+
+                    <Border Grid.Column="5"
+                             HorizontalAlignment="Right"
+                             Background="#FFF3E8D6"
+                             BorderBrush="#60A38560"
                             BorderThickness="1"
                             CornerRadius="10"
                             Padding="14,8">

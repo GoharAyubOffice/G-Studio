@@ -109,28 +109,47 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             () => stopwatch.Elapsed.TotalSeconds,
             cancellationToken);
 
-        var frameCount = 0;
+        var frameResult = FrameLoopResult.Empty;
 
         try
         {
             await Task.WhenAll(frameTask, inputTask).ConfigureAwait(false);
-            frameCount = frameTask.Result;
+            frameResult = frameTask.Result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            frameCount = frameTask.IsCompletedSuccessfully ? frameTask.Result : 0;
+            frameResult = frameTask.IsCompletedSuccessfully ? frameTask.Result : FrameLoopResult.Empty;
         }
         finally
         {
             await audioCapture.StopAsync().ConfigureAwait(false);
         }
 
+        var durationSeconds = stopwatch.Elapsed.TotalSeconds;
+        var effectiveFps = durationSeconds > 0.0d
+            ? frameResult.FrameCount / durationSeconds
+            : 0.0d;
+        var durationDriftMs = (durationSeconds - frameResult.TimingMetrics.TimelineDurationSeconds) * 1000.0d;
+
         return new CaptureRunResult(
-            FrameCount: frameCount,
-            DurationSeconds: stopwatch.Elapsed.TotalSeconds);
+            FrameCount: frameResult.FrameCount,
+            DurationSeconds: durationSeconds,
+            TargetFps: fps,
+            EffectiveFps: effectiveFps,
+            BackendName: backendName,
+            BackendDetails: backendDetails,
+            CaptureMissCount: frameResult.CaptureMissCount,
+            ReusedFrameCount: frameResult.ReusedFrameCount,
+            FrameTimelineCount: frameResult.TimingMetrics.FrameTimelineCount,
+            TimelineDurationSeconds: frameResult.TimingMetrics.TimelineDurationSeconds,
+            TimelineEffectiveFps: frameResult.TimingMetrics.TimelineEffectiveFps,
+            AverageFrameIntervalMs: frameResult.TimingMetrics.AverageFrameIntervalMs,
+            FrameIntervalJitterMs: frameResult.TimingMetrics.FrameIntervalJitterMs,
+            MaxFrameIntervalMs: frameResult.TimingMetrics.MaxFrameIntervalMs,
+            DurationDriftMs: durationDriftMs);
     }
 
-    private static async Task<int> RunFrameLoopAsync(
+    private static async Task<FrameLoopResult> RunFrameLoopAsync(
         IDesktopFrameProvider frameProvider,
         int outputWidth,
         int outputHeight,
@@ -157,7 +176,11 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             {
             }
 
-            return frameCount;
+            return new FrameLoopResult(
+                FrameCount: frameCount,
+                CaptureMissCount: 0,
+                ReusedFrameCount: 0,
+                TimingMetrics: FrameTimingMetrics.Empty);
         }
 
         var queue = Channel.CreateBounded<PendingFrame>(new BoundedChannelOptions(12)
@@ -172,8 +195,10 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             outputWidth,
             outputHeight,
             frameDirectory,
-            frameTimelineWriter,
-            cancellationToken);
+            frameTimelineWriter);
+
+        var captureMissCount = 0;
+        FrameWriterResult writerResult;
 
         try
         {
@@ -182,6 +207,11 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 var time = timestampProvider();
 
                 var capturedBitmap = TryCaptureBitmap(frameProvider);
+                if (capturedBitmap is null)
+                {
+                    captureMissCount++;
+                }
+
                 await queue.Writer
                     .WriteAsync(new PendingFrame(frameCount, time, capturedBitmap), cancellationToken)
                     .ConfigureAwait(false);
@@ -195,10 +225,14 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         finally
         {
             queue.Writer.TryComplete();
-            await writerTask.ConfigureAwait(false);
+            writerResult = await writerTask.ConfigureAwait(false);
         }
 
-        return frameCount;
+        return new FrameLoopResult(
+            FrameCount: frameCount,
+            CaptureMissCount: captureMissCount,
+            ReusedFrameCount: writerResult.ReusedFrameCount,
+            TimingMetrics: writerResult.TimingMetrics);
     }
 
     private static async Task RunInputLoopAsync(
@@ -294,33 +328,45 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         }
     }
 
-    private static async Task RunFrameWriterLoopAsync(
+    private static async Task<FrameWriterResult> RunFrameWriterLoopAsync(
         ChannelReader<PendingFrame> reader,
         int outputWidth,
         int outputHeight,
         string frameDirectory,
-        NdjsonStreamWriter<FrameTimestampEvent>? frameTimelineWriter,
-        CancellationToken cancellationToken)
+        NdjsonStreamWriter<FrameTimestampEvent>? frameTimelineWriter)
     {
         string? previousFramePath = null;
+        ulong? previousFrameSignature = null;
+        var reusedFrameCount = 0;
+        var timingAccumulator = new FrameTimingAccumulator();
 
-        await foreach (var pending in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        await foreach (var pending in reader.ReadAllAsync().ConfigureAwait(false))
         {
-            var frameWritten = WriteFrame(
+            var frameWriteResult = WriteFrame(
                 pending.Bitmap,
                 outputWidth,
                 outputHeight,
                 frameDirectory,
                 pending.Index,
-                ref previousFramePath);
+                ref previousFramePath,
+                ref previousFrameSignature);
 
-            if (frameWritten && frameTimelineWriter is not null)
+            if (frameWriteResult is FrameWriteResult.ReusedPreviousFrame)
+            {
+                reusedFrameCount++;
+            }
+
+            timingAccumulator.AddSample(pending.Time);
+
+            if (frameTimelineWriter is not null)
             {
                 await frameTimelineWriter
-                    .WriteAsync(new FrameTimestampEvent(pending.Time, pending.Index), cancellationToken)
+                    .WriteAsync(new FrameTimestampEvent(pending.Time, pending.Index), CancellationToken.None)
                     .ConfigureAwait(false);
             }
         }
+
+        return new FrameWriterResult(reusedFrameCount, timingAccumulator.Snapshot());
     }
 
     private static Bitmap? TryCaptureBitmap(IDesktopFrameProvider frameProvider)
@@ -345,13 +391,14 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
         }
     }
 
-    private static bool WriteFrame(
+    private static FrameWriteResult WriteFrame(
         Bitmap? capturedBitmap,
         int outputWidth,
         int outputHeight,
         string frameDirectory,
         int frameIndex,
-        ref string? previousFramePath)
+        ref string? previousFramePath,
+        ref ulong? previousFrameSignature)
     {
         var framePath = Path.Combine(frameDirectory, $"frame_{frameIndex:D06}.png");
 
@@ -361,7 +408,7 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             {
                 File.Copy(previousFramePath, framePath, overwrite: true);
                 previousFramePath = framePath;
-                return true;
+                return FrameWriteResult.ReusedPreviousFrame;
             }
 
             using var blackFrame = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
@@ -372,16 +419,30 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
             blackFrame.Save(framePath, ImageFormat.Png);
             previousFramePath = framePath;
-            return true;
+            previousFrameSignature = 0UL;
+            return FrameWriteResult.BlackFrame;
         }
 
         using (capturedBitmap)
         {
+            var frameSignature = ComputeFrameSignature(capturedBitmap);
+            if (
+                previousFrameSignature.HasValue &&
+                previousFrameSignature.Value == frameSignature &&
+                !string.IsNullOrWhiteSpace(previousFramePath) &&
+                File.Exists(previousFramePath))
+            {
+                File.Copy(previousFramePath, framePath, overwrite: true);
+                previousFramePath = framePath;
+                return FrameWriteResult.ReusedPreviousFrame;
+            }
+
             if (outputWidth == capturedBitmap.Width && outputHeight == capturedBitmap.Height)
             {
                 capturedBitmap.Save(framePath, ImageFormat.Png);
                 previousFramePath = framePath;
-                return true;
+                previousFrameSignature = frameSignature;
+                return FrameWriteResult.CapturedFrame;
             }
 
             using var outputBitmap = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
@@ -399,11 +460,156 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
             outputBitmap.Save(framePath, ImageFormat.Png);
             previousFramePath = framePath;
-            return true;
+            previousFrameSignature = frameSignature;
+            return FrameWriteResult.CapturedFrame;
+        }
+    }
+
+    private static unsafe ulong ComputeFrameSignature(Bitmap bitmap)
+    {
+        const ulong offsetBasis = 1469598103934665603UL;
+        const ulong prime = 1099511628211UL;
+
+        var rect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        var stepX = Math.Max(1, bitmap.Width / 36);
+        var stepY = Math.Max(1, bitmap.Height / 20);
+
+        BitmapData? data = null;
+        try
+        {
+            data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            var hash = offsetBasis;
+            var basePtr = (byte*)data.Scan0;
+
+            for (var y = 0; y < bitmap.Height; y += stepY)
+            {
+                var row = basePtr + (y * data.Stride);
+                for (var x = 0; x < bitmap.Width; x += stepX)
+                {
+                    var pixelPtr = row + (x * 4);
+                    var pixel = *(uint*)pixelPtr;
+                    hash ^= pixel;
+                    hash *= prime;
+                }
+            }
+
+            hash ^= (ulong)bitmap.Width;
+            hash *= prime;
+            hash ^= (ulong)bitmap.Height;
+            hash *= prime;
+
+            return hash;
+        }
+        catch
+        {
+            return offsetBasis ^ (ulong)bitmap.Width ^ ((ulong)bitmap.Height << 24);
+        }
+        finally
+        {
+            if (data is not null)
+            {
+                bitmap.UnlockBits(data);
+            }
         }
     }
 
     private sealed record PendingFrame(int Index, double Time, Bitmap? Bitmap);
+    private sealed record FrameWriterResult(int ReusedFrameCount, FrameTimingMetrics TimingMetrics);
+    private sealed record FrameLoopResult(int FrameCount, int CaptureMissCount, int ReusedFrameCount, FrameTimingMetrics TimingMetrics)
+    {
+        public static FrameLoopResult Empty { get; } = new(0, 0, 0, FrameTimingMetrics.Empty);
+    }
+
+    private sealed record FrameTimingMetrics(
+        int FrameTimelineCount,
+        double TimelineDurationSeconds,
+        double TimelineEffectiveFps,
+        double AverageFrameIntervalMs,
+        double FrameIntervalJitterMs,
+        double MaxFrameIntervalMs)
+    {
+        public static FrameTimingMetrics Empty { get; } = new(0, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
+    }
+
+    private sealed class FrameTimingAccumulator
+    {
+        private bool _hasSample;
+        private double _lastTimestamp;
+        private int _sampleCount;
+        private int _intervalCount;
+        private double _intervalSum;
+        private double _intervalSumSquares;
+        private double _maxInterval;
+
+        public void AddSample(double timestamp)
+        {
+            if (!double.IsFinite(timestamp) || timestamp < 0.0d)
+            {
+                return;
+            }
+
+            if (_hasSample)
+            {
+                var delta = timestamp - _lastTimestamp;
+                if (delta < 0.0d)
+                {
+                    delta = 0.0d;
+                }
+
+                _intervalCount++;
+                _intervalSum += delta;
+                _intervalSumSquares += delta * delta;
+                _maxInterval = Math.Max(_maxInterval, delta);
+            }
+
+            _lastTimestamp = timestamp;
+            _sampleCount++;
+            _hasSample = true;
+        }
+
+        public FrameTimingMetrics Snapshot()
+        {
+            if (!_hasSample || _sampleCount <= 0)
+            {
+                return FrameTimingMetrics.Empty;
+            }
+
+            var timelineDurationSeconds = _lastTimestamp;
+            var timelineEffectiveFps = timelineDurationSeconds > 0.0d
+                ? _sampleCount / timelineDurationSeconds
+                : 0.0d;
+
+            if (_intervalCount <= 0)
+            {
+                return new FrameTimingMetrics(
+                    FrameTimelineCount: _sampleCount,
+                    TimelineDurationSeconds: timelineDurationSeconds,
+                    TimelineEffectiveFps: timelineEffectiveFps,
+                    AverageFrameIntervalMs: 0.0d,
+                    FrameIntervalJitterMs: 0.0d,
+                    MaxFrameIntervalMs: 0.0d);
+            }
+
+            var meanIntervalSeconds = _intervalSum / _intervalCount;
+            var meanSquareInterval = _intervalSumSquares / _intervalCount;
+            var varianceSeconds = Math.Max(0.0d, meanSquareInterval - (meanIntervalSeconds * meanIntervalSeconds));
+
+            return new FrameTimingMetrics(
+                FrameTimelineCount: _sampleCount,
+                TimelineDurationSeconds: timelineDurationSeconds,
+                TimelineEffectiveFps: timelineEffectiveFps,
+                AverageFrameIntervalMs: meanIntervalSeconds * 1000.0d,
+                FrameIntervalJitterMs: Math.Sqrt(varianceSeconds) * 1000.0d,
+                MaxFrameIntervalMs: _maxInterval * 1000.0d);
+        }
+    }
+
+    private enum FrameWriteResult
+    {
+        CapturedFrame,
+        ReusedPreviousFrame,
+        BlackFrame
+    }
 
     private static int ResolveOutputSize(int configuredSize, int fallbackSize)
     {

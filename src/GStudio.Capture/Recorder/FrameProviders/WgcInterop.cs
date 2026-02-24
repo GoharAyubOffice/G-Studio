@@ -11,6 +11,7 @@ namespace GStudio.Capture.Recorder.FrameProviders;
 internal static class WgcInterop
 {
     private const uint MonitorDefaultToPrimary = 0x00000001;
+    private static readonly Guid GraphicsCaptureItemGuid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
 
     public static IDirect3DDevice CreateDirect3DDevice(ID3D11Device d3dDevice)
     {
@@ -50,17 +51,15 @@ internal static class WgcInterop
                 return false;
             }
 
-            var factory = ActivationFactory.Get("Windows.Graphics.Capture.GraphicsCaptureItem");
-            var interop = (IGraphicsCaptureItemInterop)factory;
-            var iid = typeof(GraphicsCaptureItem).GUID;
-            var hr = interop.CreateForMonitor(monitor, in iid, out var itemPointer);
-            if (hr < 0 || itemPointer == 0)
+            var interop = GraphicsCaptureItem.As<IGraphicsCaptureItemInterop>();
+            var itemPointer = interop.CreateForMonitor(monitor, in GraphicsCaptureItemGuid);
+            if (itemPointer == 0)
             {
-                reason = $"CreateForMonitor failed ({hr}).";
+                reason = "CreateForMonitor returned null item pointer.";
                 return false;
             }
 
-            captureItem = MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPointer);
+            captureItem = GraphicsCaptureItem.FromAbi(itemPointer);
             Marshal.Release(itemPointer);
 
             var monitorBounds = TryGetMonitorBounds(monitor, out var resolvedBounds)
@@ -164,6 +163,7 @@ internal static class WgcInterop
 [ComImport]
 [Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+[ComVisible(true)]
 internal interface IDirect3DDxgiInterfaceAccess
 {
     nint GetInterface(in Guid iid);
@@ -172,9 +172,10 @@ internal interface IDirect3DDxgiInterfaceAccess
 [ComImport]
 [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+[ComVisible(true)]
 internal interface IGraphicsCaptureItemInterop
 {
-    int CreateForWindow(nint windowHandle, in Guid iid, out nint result);
+    nint CreateForWindow(nint windowHandle, in Guid iid);
 
-    int CreateForMonitor(nint monitorHandle, in Guid iid, out nint result);
+    nint CreateForMonitor(nint monitorHandle, in Guid iid);
 }

@@ -8,9 +8,11 @@ namespace GStudio.Export.Pipeline;
 
 public sealed class MediaFoundationVideoEncoder : IVideoEncoder
 {
+    public const int RecommendedMaxFrameCount = 450;
+
     private readonly int _maxFrames;
 
-    public MediaFoundationVideoEncoder(int maxFrames = 450)
+    public MediaFoundationVideoEncoder(int maxFrames = RecommendedMaxFrameCount)
     {
         _maxFrames = Math.Max(1, maxFrames);
     }

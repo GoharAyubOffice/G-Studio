@@ -59,7 +59,9 @@ public sealed class ExportPackageWriter
             FrameCount: renderedFrameSet.FrameCount,
             TargetDurationSeconds: targetDurationSeconds,
             MicrophoneAudioPath: microphoneAudioPath,
-            SystemAudioPath: systemAudioPath);
+            SystemAudioPath: systemAudioPath,
+            PreferMediaFoundation: ShouldPreferMediaFoundation(request.EncoderMode),
+            AllowFfmpegFallback: ShouldAllowFfmpegFallback(request.EncoderMode));
 
         await WriteEncodeScriptAsync(
             scriptPath: encodeScriptPath,
@@ -142,6 +144,16 @@ public sealed class ExportPackageWriter
     private static string? ResolveOptionalFilePath(string candidatePath)
     {
         return File.Exists(candidatePath) ? candidatePath : null;
+    }
+
+    private static bool ShouldPreferMediaFoundation(VideoEncoderMode mode)
+    {
+        return mode is VideoEncoderMode.Adaptive or VideoEncoderMode.NativeOnly;
+    }
+
+    private static bool ShouldAllowFfmpegFallback(VideoEncoderMode mode)
+    {
+        return mode is VideoEncoderMode.Adaptive;
     }
 
     private static string SanitizeName(string candidate)

@@ -36,6 +36,110 @@ public sealed class CinematicEngineTests
     }
 
     [Fact]
+    public void AutoZoomGenerator_ExtendsHoldWhilePointerStaysNearClickedRegion()
+    {
+        var generator = new AutoZoomGenerator();
+        var settings = SessionSettings.CreateDefault().Camera;
+
+        var events = new List<PointerEvent>
+        {
+            PointerEvent.Down(5.0d, 900.0d, 300.0d),
+            PointerEvent.Move(5.2d, 930.0d, 320.0d),
+            PointerEvent.Move(5.9d, 940.0d, 460.0d),
+            PointerEvent.Move(6.4d, 960.0d, 500.0d),
+            PointerEvent.Move(6.8d, 980.0d, 520.0d),
+            PointerEvent.Move(7.05d, 1300.0d, 520.0d)
+        };
+
+        var segments = generator.Generate(events, 1920, 1080, settings);
+
+        Assert.Single(segments);
+        Assert.InRange(segments[0].End, 6.9d, 7.05d);
+    }
+
+    [Fact]
+    public void AutoZoomGenerator_DoesNotExtendWhenPointerLeavesBeforePostHoldActivity()
+    {
+        var generator = new AutoZoomGenerator();
+        var settings = SessionSettings.CreateDefault().Camera;
+
+        var events = new List<PointerEvent>
+        {
+            PointerEvent.Down(1.0d, 300.0d, 300.0d),
+            PointerEvent.Move(1.25d, 640.0d, 320.0d),
+            PointerEvent.Move(1.65d, 980.0d, 360.0d)
+        };
+
+        var segments = generator.Generate(events, 1920, 1080, settings);
+
+        Assert.Single(segments);
+        Assert.InRange(segments[0].End, 1.59d, 1.61d);
+    }
+
+    [Fact]
+    public void AutoZoomGenerator_KeepsZoomForRealSessionPatternUntilCursorLeavesArea()
+    {
+        var generator = new AutoZoomGenerator();
+        var settings = SessionSettings.CreateDefault().Camera;
+
+        var events = new List<PointerEvent>
+        {
+            PointerEvent.Down(13.459375d, 913.5d, 288.225d),
+            PointerEvent.Move(14.1603604d, 885.0d, 450.9d),
+            PointerEvent.Move(16.0017665d, 955.5d, 351.0d),
+            PointerEvent.Move(18.6134001d, 953.25d, 396.225d),
+            PointerEvent.Move(18.7539643d, 1008.0d, 346.275d),
+            PointerEvent.Move(19.2041283d, 1338.0d, 174.825d)
+        };
+
+        var segments = generator.Generate(events, 1920, 1080, settings);
+
+        Assert.Single(segments);
+        Assert.InRange(segments[0].End, 18.88d, 18.98d);
+    }
+
+    [Fact]
+    public void AutoZoomGenerator_AddsGentleHoverZoomWhenPointerDwellsWithoutClicks()
+    {
+        var generator = new AutoZoomGenerator();
+        var settings = SessionSettings.CreateDefault().Camera;
+
+        var events = new List<PointerEvent>
+        {
+            PointerEvent.Move(0.00d, 740.0d, 402.0d),
+            PointerEvent.Move(0.24d, 742.0d, 404.0d),
+            PointerEvent.Move(0.50d, 746.0d, 400.0d),
+            PointerEvent.Move(0.76d, 744.0d, 406.0d),
+            PointerEvent.Move(1.02d, 748.0d, 403.0d)
+        };
+
+        var segments = generator.Generate(events, 1920, 1080, settings);
+
+        Assert.Single(segments);
+        Assert.InRange(segments[0].Scale, 1.2d, 2.0d);
+        Assert.InRange(segments[0].End, 1.20d, 1.35d);
+    }
+
+    [Fact]
+    public void AutoZoomGenerator_TempersClickZoomScale()
+    {
+        var generator = new AutoZoomGenerator();
+        var settings = SessionSettings.CreateDefault().Camera;
+
+        var segments = generator.Generate(
+            [PointerEvent.Down(1.0d, 900.0d, 420.0d)],
+            1920,
+            1080,
+            settings);
+
+        Assert.Single(segments);
+
+        var legacyScale = 1.0d / settings.FocusAreaRatio;
+        Assert.True(segments[0].Scale < legacyScale);
+        Assert.InRange(segments[0].Scale, 2.2d, 2.5d);
+    }
+
+    [Fact]
     public void SpringCameraSolver_ZoomSegmentPushesScaleAboveDefault()
     {
         var solver = new SpringCameraSolver();

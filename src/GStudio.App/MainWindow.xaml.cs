@@ -27,6 +27,13 @@ public partial class MainWindow : Window
     private readonly DeterministicPreviewPlanner _previewPlanner;
     private readonly ExportPackageWriter _exportPackageWriter;
 
+    private static readonly EncoderModeOption[] EncoderModeOptions =
+    [
+        new(VideoEncoderMode.Adaptive, "Adaptive (native + ffmpeg fallback)"),
+        new(VideoEncoderMode.NativeOnly, "Native Media Foundation only"),
+        new(VideoEncoderMode.FfmpegOnly, "FFmpeg only")
+    ];
+
     private ProjectSession? _activeSession;
     private CaptureStats? _lastStats;
     private PreviewRenderPlan? _lastPreview;
@@ -69,6 +76,8 @@ public partial class MainWindow : Window
 
         _previewPlanner = new DeterministicPreviewPlanner();
         _exportPackageWriter = new ExportPackageWriter();
+
+        InitializeEncoderModeOptions();
 
         SourceInitialized += MainWindow_SourceInitialized;
 
@@ -147,9 +156,9 @@ public partial class MainWindow : Window
 
             _activeSession = _recordingCoordinator.ActiveSession;
             CaptureStatsText.Text =
-                $"Duration {_lastStats.DurationSeconds:0.00}s | Frames {_lastStats.FrameCount} | Pointer {_lastStats.PointerEventCount} | Keyboard {_lastStats.KeyboardEventCount}";
+                $"Duration {_lastStats.DurationSeconds:0.00}s | Frames {_lastStats.FrameCount} | FPS {_lastStats.EffectiveFps:0.0}/{_lastStats.TargetFps} | TlFPS {_lastStats.TimelineEffectiveFps:0.0} | Jitter {_lastStats.FrameIntervalJitterMs:0.0}ms | Drift {_lastStats.DurationDriftMs:+0.0;-0.0;0.0}ms | Backend {_lastStats.CaptureBackend} | Reused {_lastStats.ReusedFrameCount} | Missed {_lastStats.CaptureMissCount} | Pointer {_lastStats.PointerEventCount} | Keyboard {_lastStats.KeyboardEventCount}";
 
-            SetStatus("Recording stopped. Build cinematic preview next.");
+            SetStatus(BuildStopStatusMessage(_lastStats));
         }
         catch (Exception ex)
         {
@@ -233,7 +242,8 @@ public partial class MainWindow : Window
                 PreviewPlan: _lastPreview,
                 OutputDirectory: outputRoot,
                 OutputName: $"session_{_activeSession.SessionId}",
-                EncodeVideo: true);
+                EncodeVideo: true,
+                EncoderMode: SelectedEncoderMode());
 
             var exportResult = await _exportPackageWriter.WriteAsync(exportRequest);
             SetStatus(exportResult.VideoEncoded
@@ -252,6 +262,48 @@ public partial class MainWindow : Window
         StatusText.Foreground = isError
             ? System.Windows.Media.Brushes.IndianRed
             : System.Windows.Media.Brushes.Teal;
+    }
+
+    private void InitializeEncoderModeOptions()
+    {
+        EncoderModeCombo.ItemsSource = EncoderModeOptions;
+        EncoderModeCombo.SelectedIndex = 0;
+    }
+
+    private VideoEncoderMode SelectedEncoderMode()
+    {
+        return EncoderModeCombo.SelectedItem is EncoderModeOption option
+            ? option.Mode
+            : VideoEncoderMode.Adaptive;
+    }
+
+    private static string BuildStopStatusMessage(CaptureStats stats)
+    {
+        var degradedFps = stats.TargetFps > 0 && stats.EffectiveFps < (stats.TargetFps * 0.8d);
+        var usingFallbackBackend = stats.CaptureBackend.Contains("fallback", StringComparison.OrdinalIgnoreCase);
+        var driftedTimeline = Math.Abs(stats.DurationDriftMs) > 280.0d;
+
+        if (degradedFps && usingFallbackBackend)
+        {
+            return $"Recording stopped with degraded capture ({stats.EffectiveFps:0.0}/{stats.TargetFps} fps on {stats.CaptureBackend}). Build preview next.";
+        }
+
+        if (degradedFps)
+        {
+            return $"Recording stopped with low effective fps ({stats.EffectiveFps:0.0}/{stats.TargetFps}). Build preview next.";
+        }
+
+        if (usingFallbackBackend)
+        {
+            return $"Recording stopped on fallback backend ({stats.CaptureBackend}). Build preview next.";
+        }
+
+        if (driftedTimeline)
+        {
+            return $"Recording stopped with timing drift ({stats.DurationDriftMs:+0.0;-0.0;0.0} ms). Build preview next.";
+        }
+
+        return "Recording stopped. Build cinematic preview next.";
     }
 
     private void UpdateUiState()
@@ -325,4 +377,9 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private sealed record EncoderModeOption(VideoEncoderMode Mode, string Label)
+    {
+        public override string ToString() => Label;
+    }
 }

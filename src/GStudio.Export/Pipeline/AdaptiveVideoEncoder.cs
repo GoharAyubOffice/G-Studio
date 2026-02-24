@@ -17,6 +17,19 @@ public sealed class AdaptiveVideoEncoder : IVideoEncoder
     {
         if (request.PreferMediaFoundation)
         {
+            if (request.FrameCount is { } frameCount && frameCount > MediaFoundationVideoEncoder.RecommendedMaxFrameCount)
+            {
+                if (!request.AllowFfmpegFallback)
+                {
+                    throw new InvalidOperationException(
+                        $"Native Media Foundation mode supports up to {MediaFoundationVideoEncoder.RecommendedMaxFrameCount} frames per export. " +
+                        $"This export has {frameCount} frames.");
+                }
+
+                await _ffmpegEncoder.EncodeAsync(request, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             try
             {
                 await _mediaFoundationEncoder.EncodeAsync(request, cancellationToken).ConfigureAwait(false);

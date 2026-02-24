@@ -18,6 +18,11 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 - Export applies audio drift correction with resample + tempo alignment and trim-to-video duration.
 - Rendered export frames now composite cursor sprite from cinematic cursor samples.
 - Native Media Foundation MP4 encoding path is implemented with automatic fallback to FFmpeg.
+- App export now supports encoder mode selection (adaptive, native-only, ffmpeg-only).
+- Adaptive export now bypasses Media Foundation for long frame sequences and falls back directly to FFmpeg.
+- Capture manifest now stores timeline-level pacing diagnostics (timeline FPS, jitter, max interval, duration drift).
+- Capture writer now reuses prior encoded frames when the screen is unchanged to reduce PNG encoding load.
+- Auto-zoom now includes dwell-based gentle zooms and reduced click zoom intensity.
 - Export package includes:
   - `render_plan.json`
   - `rendered_frames/frame_*.png` (camera-follow output)
@@ -50,6 +55,5 @@ Ship a Windows-first MVP that records desktop interaction data and produces cine
 5. Add cursor sprite compositing and final audio mix in export path.
 
 ## Remaining focus
-1. Improve Media Foundation encoder throughput for long recordings (reduce frame-by-frame overhead).
-2. Add robust timeline-level drift metrics and diagnostics in project metadata.
-3. Add selective encoder mode control in UI (native only / ffmpeg only / adaptive).
+1. Fine-tune zoom heuristics (dwell thresholds, scale bias, and handoff timing) from real recordings.
+2. Validate WGC interop behavior on target machines and close any remaining fallback-only cases.
