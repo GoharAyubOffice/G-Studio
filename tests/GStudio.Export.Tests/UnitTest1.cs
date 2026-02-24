@@ -115,6 +115,24 @@ public sealed class ExportPipelineTests
     }
 
     [Fact]
+    public void FfmpegCommandBuilder_RuntimeArgsDoNotRepeatExecutable()
+    {
+        var request = new VideoEncodeRequest(
+            FrameInputPattern: "C:\\tmp\\frame_%06d.png",
+            OutputMp4Path: "C:\\tmp\\out.mp4",
+            Fps: 30,
+            TargetDurationSeconds: 1.5d);
+
+        var runtimeArgs = FfmpegCommandBuilder.BuildRuntimeArguments(request);
+        var scriptCommand = FfmpegCommandBuilder.BuildScriptCommand(request);
+
+        Assert.StartsWith("-y -framerate", runtimeArgs, StringComparison.Ordinal);
+        Assert.False(runtimeArgs.StartsWith("ffmpeg", StringComparison.OrdinalIgnoreCase));
+
+        Assert.StartsWith("ffmpeg -y -framerate", scriptCommand, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task CinematicFrameRenderer_DrawsCursorWhenVisible()
     {
         var root = Path.Combine(Path.GetTempPath(), "GStudioTests", Guid.NewGuid().ToString("N"));

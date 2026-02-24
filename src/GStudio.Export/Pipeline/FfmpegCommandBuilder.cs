@@ -6,7 +6,7 @@ internal static class FfmpegCommandBuilder
 {
     public static string BuildRuntimeArguments(VideoEncodeRequest request)
     {
-        return BuildCommand(
+        return BuildArguments(
             frameInputExpression: Quote(request.FrameInputPattern),
             outputExpression: Quote(request.OutputMp4Path),
             request);
@@ -14,13 +14,13 @@ internal static class FfmpegCommandBuilder
 
     public static string BuildScriptCommand(VideoEncodeRequest request)
     {
-        return BuildCommand(
+        return "ffmpeg " + BuildArguments(
             frameInputExpression: "\"%FRAME_PATTERN%\"",
             outputExpression: "\"%OUTPUT_FILE%\"",
             request);
     }
 
-    private static string BuildCommand(
+    private static string BuildArguments(
         string frameInputExpression,
         string outputExpression,
         VideoEncodeRequest request)
@@ -45,7 +45,7 @@ internal static class FfmpegCommandBuilder
                 "[aout]";
 
             return
-                $"ffmpeg -y -framerate {safeFps} -i {frameInputExpression} -i {Quote(request.MicrophoneAudioPath!)} -i {Quote(request.SystemAudioPath!)} " +
+                $"-y -framerate {safeFps} -i {frameInputExpression} -i {Quote(request.MicrophoneAudioPath!)} -i {Quote(request.SystemAudioPath!)} " +
                 $"-filter_complex \"{mixFilter}\" -map 0:v:0 -map \"[aout]\" " +
                 $"-c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart{durationOption} {outputExpression}";
         }
@@ -56,12 +56,12 @@ internal static class FfmpegCommandBuilder
             var audioFilter = BuildTrackFilter(audioPath, targetDuration, hasTargetDuration);
 
             return
-                $"ffmpeg -y -framerate {safeFps} -i {frameInputExpression} -i {Quote(audioPath)} -map 0:v:0 -map 1:a:0 " +
+                $"-y -framerate {safeFps} -i {frameInputExpression} -i {Quote(audioPath)} -map 0:v:0 -map 1:a:0 " +
                 $"-c:v libx264 -pix_fmt yuv420p -filter:a \"{audioFilter}\" -c:a aac -movflags +faststart{durationOption} {outputExpression}";
         }
 
         return
-            $"ffmpeg -y -framerate {safeFps} -i {frameInputExpression} -c:v libx264 -pix_fmt yuv420p -movflags +faststart{durationOption} {outputExpression}";
+            $"-y -framerate {safeFps} -i {frameInputExpression} -c:v libx264 -pix_fmt yuv420p -movflags +faststart{durationOption} {outputExpression}";
     }
 
     private static string BuildTrackFilter(string audioPath, double targetDuration, bool hasTargetDuration)
