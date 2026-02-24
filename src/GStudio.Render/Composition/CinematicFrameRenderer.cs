@@ -79,7 +79,9 @@ public sealed class CinematicFrameRenderer
                 previousCenter,
                 previousRenderedFramePath);
 
-            renderedBitmap.Save(outputPath, ImageFormat.Png);
+            var encoder = GetPngEncoder();
+            var encoderParams = GetHighQualityEncoderParams();
+            renderedBitmap.Save(outputPath, encoder, encoderParams);
 
             previousCenter = TransformPoint(plan.Frames[frameIndex].Camera.Center, outputWidth, outputHeight, safeDesignWidth, safeDesignHeight);
             previousRenderedFramePath = outputPath;
@@ -185,6 +187,7 @@ public sealed class CinematicFrameRenderer
         graphics.SmoothingMode = SmoothingMode.HighQuality;
         graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
         graphics.CompositingQuality = CompositingQuality.HighQuality;
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
         graphics.DrawImage(
             source,
@@ -317,5 +320,25 @@ public sealed class CinematicFrameRenderer
             (float)(projectedY - hotspotSize * 0.35f),
             hotspotSize,
             hotspotSize);
+    }
+
+    private static ImageCodecInfo GetPngEncoder()
+    {
+        var codecs = ImageCodecInfo.GetImageEncoders();
+        foreach (var codec in codecs)
+        {
+            if (codec.FormatID == ImageFormat.Png.Guid)
+            {
+                return codec;
+            }
+        }
+        return codecs[0];
+    }
+
+    private static EncoderParameters GetHighQualityEncoderParams()
+    {
+        var param = new EncoderParameters(1);
+        param.Param[0] = new EncoderParameter(Encoder.Quality, 100L);
+        return param;
     }
 }

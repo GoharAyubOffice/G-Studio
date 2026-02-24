@@ -439,7 +439,9 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
 
             if (outputWidth == capturedBitmap.Width && outputHeight == capturedBitmap.Height)
             {
-                capturedBitmap.Save(framePath, ImageFormat.Png);
+                var captureEncoder = GetPngEncoder();
+                var captureEncoderParams = GetHighQualityEncoderParams();
+                capturedBitmap.Save(framePath, captureEncoder, captureEncoderParams);
                 previousFramePath = framePath;
                 previousFrameSignature = frameSignature;
                 return FrameWriteResult.CapturedFrame;
@@ -458,11 +460,33 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 new Rectangle(0, 0, capturedBitmap.Width, capturedBitmap.Height),
                 GraphicsUnit.Pixel);
 
-            outputBitmap.Save(framePath, ImageFormat.Png);
+            var renderEncoder = GetPngEncoder();
+            var renderEncoderParams = GetHighQualityEncoderParams();
+            outputBitmap.Save(framePath, renderEncoder, renderEncoderParams);
             previousFramePath = framePath;
             previousFrameSignature = frameSignature;
             return FrameWriteResult.CapturedFrame;
         }
+    }
+
+    private static ImageCodecInfo GetPngEncoder()
+    {
+        var codecs = ImageCodecInfo.GetImageEncoders();
+        foreach (var codec in codecs)
+        {
+            if (codec.FormatID == ImageFormat.Png.Guid)
+            {
+                return codec;
+            }
+        }
+        return codecs[0];
+    }
+
+    private static EncoderParameters GetHighQualityEncoderParams()
+    {
+        var param = new EncoderParameters(1);
+        param.Param[0] = new EncoderParameter(Encoder.Quality, 100L);
+        return param;
     }
 
     private static unsafe ulong ComputeFrameSignature(Bitmap bitmap)

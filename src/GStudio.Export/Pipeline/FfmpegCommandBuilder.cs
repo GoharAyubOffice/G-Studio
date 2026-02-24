@@ -47,7 +47,7 @@ internal static class FfmpegCommandBuilder
             return
                 $"-y -framerate {safeFps} -i {frameInputExpression} -i {Quote(request.MicrophoneAudioPath!)} -i {Quote(request.SystemAudioPath!)} " +
                 $"-filter_complex \"{mixFilter}\" -map 0:v:0 -map \"[aout]\" " +
-                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart{durationOption} {outputExpression}";
+                $"-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -movflags +faststart{durationOption} {outputExpression}";
         }
 
         if (hasMic || hasSystem)
@@ -57,11 +57,11 @@ internal static class FfmpegCommandBuilder
 
             return
                 $"-y -framerate {safeFps} -i {frameInputExpression} -i {Quote(audioPath)} -map 0:v:0 -map 1:a:0 " +
-                $"-c:v libx264 -pix_fmt yuv420p -filter:a \"{audioFilter}\" -c:a aac -movflags +faststart{durationOption} {outputExpression}";
+                $"-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -filter:a \"{audioFilter}\" -c:a aac -movflags +faststart{durationOption} {outputExpression}";
         }
 
         return
-            $"-y -framerate {safeFps} -i {frameInputExpression} -c:v libx264 -pix_fmt yuv420p -movflags +faststart{durationOption} {outputExpression}";
+            $"-y -framerate {safeFps} -i {frameInputExpression} -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart{durationOption} {outputExpression}";
     }
 
     private static string BuildTrackFilter(string audioPath, double targetDuration, bool hasTargetDuration)
