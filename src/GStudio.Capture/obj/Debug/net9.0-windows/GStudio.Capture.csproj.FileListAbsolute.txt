@@ -1,0 +1,17 @@
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.csproj.AssemblyReference.cache
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.AssemblyInfoInputs.cache
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.AssemblyInfo.cs
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.csproj.CoreCompileInputs.cache
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Capture.deps.json
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Capture.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Capture.pdb
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Common.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Project.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Common.pdb
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\bin\Debug\net9.0-windows\GStudio.Project.pdb
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio..DC9D5F57.Up2Date
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\refint\GStudio.Capture.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\GStudio.Capture.pdb
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Capture\obj\Debug\net9.0-windows\ref\GStudio.Capture.dll

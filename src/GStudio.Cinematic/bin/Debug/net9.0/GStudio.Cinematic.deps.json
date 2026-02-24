@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "GStudio.Cinematic/1.0.0": {
+        "dependencies": {
+          "GStudio.Common": "1.0.0"
+        },
+        "runtime": {
+          "GStudio.Cinematic.dll": {}
+        }
+      },
+      "GStudio.Common/1.0.0": {
+        "runtime": {
+          "GStudio.Common.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "GStudio.Cinematic/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "GStudio.Common/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

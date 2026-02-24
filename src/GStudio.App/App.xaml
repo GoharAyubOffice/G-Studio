@@ -1,0 +1,23 @@
+﻿<Application x:Class="GStudio.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="AppSurface" Color="#FFF7F2EA" />
+        <SolidColorBrush x:Key="AppSurfaceAlt" Color="#FFEEDFCB" />
+        <SolidColorBrush x:Key="AppInk" Color="#FF1B2733" />
+        <SolidColorBrush x:Key="AppAccent" Color="#FF0A7D73" />
+
+        <Style TargetType="Button">
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="FontFamily" Value="Bahnschrift" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#FF0A7D73" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </Application.Resources>
+</Application>

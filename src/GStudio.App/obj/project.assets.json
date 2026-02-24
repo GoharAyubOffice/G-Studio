@@ -1,0 +1,223 @@
+{
+  "version": 3,
+  "targets": {
+    "net9.0-windows7.0": {
+      "GStudio.Capture/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "GStudio.Common": "1.0.0",
+          "GStudio.Project": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/GStudio.Capture.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/GStudio.Capture.dll": {}
+        },
+        "frameworkReferences": [
+          "Microsoft.WindowsDesktop.App.WindowsForms"
+        ]
+      },
+      "GStudio.Cinematic/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "GStudio.Common": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/GStudio.Cinematic.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/GStudio.Cinematic.dll": {}
+        }
+      },
+      "GStudio.Common/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "compile": {
+          "bin/placeholder/GStudio.Common.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/GStudio.Common.dll": {}
+        }
+      },
+      "GStudio.Export/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "GStudio.Common": "1.0.0",
+          "GStudio.Project": "1.0.0",
+          "GStudio.Render": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/GStudio.Export.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/GStudio.Export.dll": {}
+        }
+      },
+      "GStudio.Project/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "GStudio.Common": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/GStudio.Project.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/GStudio.Project.dll": {}
+        }
+      },
+      "GStudio.Render/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "GStudio.Cinematic": "1.0.0",
+          "GStudio.Common": "1.0.0",
+          "GStudio.Project": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/GStudio.Render.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/GStudio.Render.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "GStudio.Capture/1.0.0": {
+      "type": "project",
+      "path": "../GStudio.Capture/GStudio.Capture.csproj",
+      "msbuildProject": "../GStudio.Capture/GStudio.Capture.csproj"
+    },
+    "GStudio.Cinematic/1.0.0": {
+      "type": "project",
+      "path": "../GStudio.Cinematic/GStudio.Cinematic.csproj",
+      "msbuildProject": "../GStudio.Cinematic/GStudio.Cinematic.csproj"
+    },
+    "GStudio.Common/1.0.0": {
+      "type": "project",
+      "path": "../GStudio.Common/GStudio.Common.csproj",
+      "msbuildProject": "../GStudio.Common/GStudio.Common.csproj"
+    },
+    "GStudio.Export/1.0.0": {
+      "type": "project",
+      "path": "../GStudio.Export/GStudio.Export.csproj",
+      "msbuildProject": "../GStudio.Export/GStudio.Export.csproj"
+    },
+    "GStudio.Project/1.0.0": {
+      "type": "project",
+      "path": "../GStudio.Project/GStudio.Project.csproj",
+      "msbuildProject": "../GStudio.Project/GStudio.Project.csproj"
+    },
+    "GStudio.Render/1.0.0": {
+      "type": "project",
+      "path": "../GStudio.Render/GStudio.Render.csproj",
+      "msbuildProject": "../GStudio.Render/GStudio.Render.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net9.0-windows7.0": [
+      "GStudio.Capture >= 1.0.0",
+      "GStudio.Cinematic >= 1.0.0",
+      "GStudio.Common >= 1.0.0",
+      "GStudio.Export >= 1.0.0",
+      "GStudio.Project >= 1.0.0",
+      "GStudio.Render >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\buttg\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.App\\GStudio.App.csproj",
+      "projectName": "GStudio.App",
+      "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.App\\GStudio.App.csproj",
+      "packagesPath": "C:\\Users\\buttg\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.App\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\buttg\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net9.0-windows"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net9.0-windows7.0": {
+          "targetAlias": "net9.0-windows",
+          "projectReferences": {
+            "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Capture\\GStudio.Capture.csproj": {
+              "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Capture\\GStudio.Capture.csproj"
+            },
+            "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Cinematic\\GStudio.Cinematic.csproj": {
+              "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Cinematic\\GStudio.Cinematic.csproj"
+            },
+            "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Common\\GStudio.Common.csproj": {
+              "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Common\\GStudio.Common.csproj"
+            },
+            "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Export\\GStudio.Export.csproj": {
+              "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Export\\GStudio.Export.csproj"
+            },
+            "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Project\\GStudio.Project.csproj": {
+              "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Project\\GStudio.Project.csproj"
+            },
+            "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Render\\GStudio.Render.csproj": {
+              "projectPath": "C:\\Users\\buttg\\Desktop\\G-Studio\\src\\GStudio.Render\\GStudio.Render.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "9.0.200"
+    },
+    "frameworks": {
+      "net9.0-windows7.0": {
+        "targetAlias": "net9.0-windows",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          },
+          "Microsoft.WindowsDesktop.App.WPF": {
+            "privateAssets": "none"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

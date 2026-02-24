@@ -1,0 +1,11 @@
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\bin\Debug\net9.0\GStudio.Common.deps.json
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\bin\Debug\net9.0\GStudio.Common.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\bin\Debug\net9.0\GStudio.Common.pdb
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\GStudio.Common.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\GStudio.Common.AssemblyInfoInputs.cache
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\GStudio.Common.AssemblyInfo.cs
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\GStudio.Common.csproj.CoreCompileInputs.cache
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\GStudio.Common.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\refint\GStudio.Common.dll
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\GStudio.Common.pdb
+C:\Users\buttg\Desktop\G-Studio\src\GStudio.Common\obj\Debug\net9.0\ref\GStudio.Common.dll
