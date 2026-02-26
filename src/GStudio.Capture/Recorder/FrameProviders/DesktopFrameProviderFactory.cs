@@ -35,14 +35,15 @@ internal static class DesktopFrameProviderFactory
             return d3dProvider!;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[GStudio] D3D11 duplication failed: {duplicationReason}");
-
         if (gpuTier >= GpuTier.Integrated && WgcFrameProvider.TryCreate(out var wgcProvider, out var wgcReason))
         {
             backendName = "wgc-primary";
-            backendDetails = $"Windows Graphics Capture active. GPU tier: {gpuTier}";
+            backendDetails = $"Windows Graphics Capture active. GPU tier: {gpuTier}. D3D11 failed: {duplicationReason ?? "unknown"}";
             return wgcProvider!;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[GStudio] D3D11 duplication FAILED: {duplicationReason}");
+        Console.WriteLine($"[GStudio] D3D11 duplication FAILED: {duplicationReason}");
 
         if (D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dFallback, out var dupFallbackReason))
         {
@@ -59,7 +60,7 @@ internal static class DesktopFrameProviderFactory
         }
 
         backendName = "gdi-fallback";
-        backendDetails = $"All fast backends failed. GPU tier: {gpuTier}. WGC: {wgcFallbackReason ?? "unknown"}. D3D11: {dupFallbackReason ?? "unknown"}";
+        backendDetails = $"All fast backends failed. GPU tier: {gpuTier}. D3D11: {duplicationReason ?? "unknown"}. WGC: {wgcFallbackReason ?? "unknown"}";
         var primary = FormsScreen.PrimaryScreen;
         if (primary is not null)
         {
