@@ -440,7 +440,7 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
             if (outputWidth == capturedBitmap.Width && outputHeight == capturedBitmap.Height)
             {
                 var captureEncoder = GetPngEncoder();
-                var captureEncoderParams = GetHighQualityEncoderParams();
+                var captureEncoderParams = GetFastEncoderParams();
                 capturedBitmap.Save(framePath, captureEncoder, captureEncoderParams);
                 previousFramePath = framePath;
                 previousFrameSignature = frameSignature;
@@ -461,7 +461,7 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
                 GraphicsUnit.Pixel);
 
             var renderEncoder = GetPngEncoder();
-            var renderEncoderParams = GetHighQualityEncoderParams();
+            var renderEncoderParams = GetFastEncoderParams();
             outputBitmap.Save(framePath, renderEncoder, renderEncoderParams);
             previousFramePath = framePath;
             previousFrameSignature = frameSignature;
@@ -486,6 +486,13 @@ public sealed class DesktopSnapshotCaptureBackend : ICaptureBackend
     {
         var param = new EncoderParameters(1);
         param.Param[0] = new EncoderParameter(Encoder.Quality, 100L);
+        return param;
+    }
+
+    private static EncoderParameters GetFastEncoderParams()
+    {
+        var param = new EncoderParameters(1);
+        param.Param[0] = new EncoderParameter(Encoder.Quality, 95L);
         return param;
     }
 
