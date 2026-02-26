@@ -27,12 +27,15 @@ internal static class DesktopFrameProviderFactory
         backendName = "unknown";
         backendDetails = "Unknown capture backend.";
 
-        if (gpuTier >= GpuTier.Dedicated && D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dProvider, out var duplicationReason))
+        string? duplicationReason = null;
+        if (gpuTier >= GpuTier.Dedicated && D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dProvider, out duplicationReason))
         {
             backendName = "d3d11-duplication";
             backendDetails = $"Desktop duplication backend active. GPU tier: {gpuTier}";
             return d3dProvider!;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[GStudio] D3D11 duplication failed: {duplicationReason}");
 
         if (gpuTier >= GpuTier.Integrated && WgcFrameProvider.TryCreate(out var wgcProvider, out var wgcReason))
         {
