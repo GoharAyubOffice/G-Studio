@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -39,9 +40,6 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
         provider = null;
         reason = null;
 
-        ID3D11Device? device = null;
-        ID3D11DeviceContext? context = null;
-
         try
         {
             var featureLevels = new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0, FeatureLevel.Level_10_1 };
@@ -50,18 +48,26 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
                 DriverType.Hardware,
                 DeviceCreationFlags.BgraSupport,
                 featureLevels,
-                out device,
-                out context);
+                out ID3D11Device device,
+                out ID3D11DeviceContext context);
 
-            if (createResult.Failure)
+            if (createResult.Failure || device is null)
             {
                 reason = $"D3D11 device creation failed ({createResult.Code}).";
                 return false;
             }
 
-            using var dxgiDevice = device!.QueryInterface<IDXGIDevice>();
+            using var dxgiDevice = device.QueryInterface<IDXGIDevice>();
             using var adapter = dxgiDevice.GetAdapter();
-            adapter.EnumOutputs(0, out var output).CheckError();
+            
+            if (adapter.EnumOutputs(0, out var output).Failure || output is null)
+            {
+                reason = "Could not enumerate display output - likely running on wrong GPU (integrated instead of dedicated).";
+                device.Dispose();
+                context?.Dispose();
+                return false;
+            }
+
             using (output)
             {
                 using var output1 = output.QueryInterface<IDXGIOutput1>();
@@ -73,13 +79,17 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
                 }
                 catch (Exception dupEx)
                 {
-                    reason = $"DXGI DuplicateOutput failed: {dupEx.Message}. Another app may be capturing or access is denied.";
+                    reason = $"DXGI DuplicateOutput failed: {dupEx.Message}. Another app may be capturing or display is on different GPU.";
+                    device.Dispose();
+                    context?.Dispose();
                     return false;
                 }
 
                 if (duplication is null)
                 {
                     reason = "DXGI DuplicateOutput returned null.";
+                    device.Dispose();
+                    context?.Dispose();
                     return false;
                 }
 
@@ -89,14 +99,7 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
                     device,
                     context,
                     duplication,
-                    new Rectangle(
-                        bounds.Left,
-                        bounds.Top,
-                        bounds.Width,
-                        bounds.Height));
-
-                device = null;
-                context = null;
+                    new Rectangle(bounds.Left, bounds.Top, bounds.Width, bounds.Height));
 
                 return true;
             }
@@ -105,11 +108,6 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
         {
             reason = $"Exception during D3D11 duplication init: {ex.Message}";
             return false;
-        }
-        finally
-        {
-            context?.Dispose();
-            device?.Dispose();
         }
     }
 
