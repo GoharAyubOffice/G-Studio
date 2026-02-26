@@ -67,12 +67,20 @@ public sealed record SessionSettings(
 {
     public static SessionSettings CreateDefault()
     {
+        return CreateAdaptive();
+    }
+
+    public static SessionSettings CreateAdaptive(GpuTier? overrideGpuTier = null)
+    {
+        var gpuTier = overrideGpuTier ?? DeviceCapabilityDetector.DetectGpuTier();
+        var (fps, width, height) = GetAdaptiveSettings(gpuTier);
+
         return new SessionSettings(
             Video: new VideoCaptureSettings(
                 Source: CaptureSourceKind.Display,
-                Width: 2560,
-                Height: 1440,
-                Fps: 30,
+                Width: width,
+                Height: height,
+                Fps: fps,
                 CaptureFrames: true),
             Audio: new AudioCaptureSettings(
                 CaptureMicrophone: false,
@@ -98,5 +106,16 @@ public sealed record SessionSettings(
             MotionBlur: new MotionBlurSettings(
                 ScreenBlurStrength: 0.25d,
                 CursorBlurStrength: 0.35d));
+    }
+
+    private static (int Fps, int Width, int Height) GetAdaptiveSettings(GpuTier gpuTier)
+    {
+        return gpuTier switch
+        {
+            GpuTier.Dedicated => (60, 1920, 1080),
+            GpuTier.Integrated => (30, 1920, 1080),
+            GpuTier.Software => (30, 1280, 720),
+            _ => (30, 1920, 1080)
+        };
     }
 }

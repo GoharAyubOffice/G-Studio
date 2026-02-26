@@ -1,5 +1,6 @@
 using System.Drawing;
 using GStudio.Common.Configuration;
+using GStudio.Capture.Recorder.FrameProviders;
 using FormsScreen = System.Windows.Forms.Screen;
 
 namespace GStudio.Capture.Recorder.FrameProviders;
@@ -22,22 +23,40 @@ internal static class DesktopFrameProviderFactory
                 Math.Max(1, videoSettings.Region.Height)));
         }
 
-        if (WgcFrameProvider.TryCreate(out var wgcProvider, out var wgcReason))
-        {
-            backendName = "wgc-primary";
-            backendDetails = "Windows Graphics Capture active.";
-            return wgcProvider!;
-        }
+        var gpuTier = DeviceCapabilityDetector.DetectGpuTier();
+        backendName = "unknown";
+        backendDetails = "Unknown capture backend.";
 
-        if (D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dProvider, out var duplicationReason))
+        if (gpuTier >= GpuTier.Dedicated && D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dProvider, out var duplicationReason))
         {
             backendName = "d3d11-duplication";
-            backendDetails = "Desktop duplication backend active.";
+            backendDetails = $"Desktop duplication backend active. GPU tier: {gpuTier}";
             return d3dProvider!;
         }
 
+        if (gpuTier >= GpuTier.Integrated && WgcFrameProvider.TryCreate(out var wgcProvider, out var wgcReason))
+        {
+            backendName = "wgc-primary";
+            backendDetails = $"Windows Graphics Capture active. GPU tier: {gpuTier}";
+            return wgcProvider!;
+        }
+
+        if (D3D11DesktopDuplicationFrameProvider.TryCreate(out var d3dFallback, out var dupFallbackReason))
+        {
+            backendName = "d3d11-duplication";
+            backendDetails = $"Desktop duplication (fallback). GPU tier: {gpuTier}";
+            return d3dFallback!;
+        }
+
+        if (WgcFrameProvider.TryCreate(out var wgcFallback, out var wgcFallbackReason))
+        {
+            backendName = "wgc-primary";
+            backendDetails = $"Windows Graphics Capture (fallback). GPU tier: {gpuTier}";
+            return wgcFallback!;
+        }
+
         backendName = "gdi-fallback";
-        backendDetails = $"WGC unavailable: {wgcReason ?? "unknown"}; duplication unavailable: {duplicationReason ?? "unknown"}";
+        backendDetails = $"All fast backends failed. GPU tier: {gpuTier}. WGC: {wgcFallbackReason ?? "unknown"}. D3D11: {dupFallbackReason ?? "unknown"}";
         var primary = FormsScreen.PrimaryScreen;
         if (primary is not null)
         {
