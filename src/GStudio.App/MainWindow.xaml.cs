@@ -45,14 +45,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        var defaultSettings = SessionSettings.CreateDefault();
+        var defaultSettings = SessionSettings.CreateAdaptive();
         _sessionSettings = defaultSettings with
         {
             Video = defaultSettings.Video with
             {
                 Width = 1920,
                 Height = 1080,
-                Fps = 30,
                 CaptureFrames = true
             },
             Audio = defaultSettings.Audio with

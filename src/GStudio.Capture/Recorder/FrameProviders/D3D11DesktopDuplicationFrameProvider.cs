@@ -59,14 +59,30 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
                 return false;
             }
 
-            using var dxgiDevice = device.QueryInterface<IDXGIDevice>();
+            using var dxgiDevice = device!.QueryInterface<IDXGIDevice>();
             using var adapter = dxgiDevice.GetAdapter();
             adapter.EnumOutputs(0, out var output).CheckError();
             using (output)
             {
                 using var output1 = output.QueryInterface<IDXGIOutput1>();
 
-                var duplication = output1.DuplicateOutput(device);
+                IDXGIOutputDuplication? duplication;
+                try
+                {
+                    duplication = output1.DuplicateOutput(device);
+                }
+                catch (Exception dupEx)
+                {
+                    reason = $"DXGI DuplicateOutput failed: {dupEx.Message}. Another app may be capturing or access is denied.";
+                    return false;
+                }
+
+                if (duplication is null)
+                {
+                    reason = "DXGI DuplicateOutput returned null.";
+                    return false;
+                }
+
                 var bounds = FormsScreen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 1920, 1080);
 
                 provider = new D3D11DesktopDuplicationFrameProvider(
@@ -87,7 +103,7 @@ internal sealed class D3D11DesktopDuplicationFrameProvider : IDesktopFrameProvid
         }
         catch (Exception ex)
         {
-            reason = ex.Message;
+            reason = $"Exception during D3D11 duplication init: {ex.Message}";
             return false;
         }
         finally
